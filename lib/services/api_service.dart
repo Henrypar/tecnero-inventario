@@ -414,17 +414,17 @@ class ApiService {
       'hasta': hasta.toIso8601String(),
       if (lineaId != null) 'linea_id': lineaId,
     };
+    final queryAll = <String, List<String>>{};
 
     if (lineaIds != null && lineaIds.isNotEmpty) {
-      for (var i = 0; i < lineaIds.length; i++) {
-        query['linea_ids[$i]'] = lineaIds[i];
-      }
+      queryAll['linea_ids'] = lineaIds;
     }
 
     final data = await _request(
       'GET',
       '/dashboard/resumen',
       query: query,
+      queryAll: queryAll.isEmpty ? null : queryAll,
     );
 
     return Map<String, dynamic>.from(data);
@@ -441,17 +441,17 @@ class ApiService {
       if (hasta != null) 'hasta': hasta.toIso8601String(),
       if (lineaId != null) 'linea_id': lineaId,
     };
+    final queryAll = <String, List<String>>{};
 
     if (lineaIds != null && lineaIds.isNotEmpty) {
-      for (var i = 0; i < lineaIds.length; i++) {
-        query['linea_ids[$i]'] = lineaIds[i];
-      }
+      queryAll['linea_ids'] = lineaIds;
     }
 
     final data = await _request(
       'GET',
       '/produccion',
       query: query,
+      queryAll: queryAll.isEmpty ? null : queryAll,
     );
 
     return List<Map<String, dynamic>>.from(data);
@@ -517,6 +517,7 @@ class ApiService {
     String method,
     String path, {
     Map<String, String>? query,
+    Map<String, List<String>>? queryAll,
     Map<String, dynamic>? body,
     bool authenticated = true,
   }) async {
@@ -524,7 +525,30 @@ class ApiService {
       throw const ApiException('Sesión no iniciada', 401);
     }
 
-    final uri = Uri.parse('$baseUrl$path').replace(queryParameters: query);
+    final queryPairs = <MapEntry<String, String>>[];
+    if (query != null) {
+      queryPairs.addAll(query.entries);
+    }
+    if (queryAll != null) {
+      for (final entry in queryAll.entries) {
+        for (final value in entry.value) {
+          queryPairs.add(MapEntry(entry.key, value));
+        }
+      }
+    }
+
+    final queryString = queryPairs.isEmpty
+        ? ''
+        : queryPairs
+            .map(
+              (entry) =>
+                  '${Uri.encodeQueryComponent(entry.key)}=${Uri.encodeQueryComponent(entry.value)}',
+            )
+            .join('&');
+
+    final uri = Uri.parse(
+      queryString.isEmpty ? '$baseUrl$path' : '$baseUrl$path?$queryString',
+    );
 
     late final http.Response response;
     try {

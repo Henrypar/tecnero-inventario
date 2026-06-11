@@ -65,7 +65,11 @@ final solicitudesPendientesProvider =
 
 final solicitudesPendientesBodegaProvider =
     FutureProvider<List<Solicitud>>((ref) async {
-  return await ref.read(apiServiceProvider).getSolicitudesPendientesBodega();
+  final usuario = await ref.watch(usuarioActualProvider.future);
+  final api = ref.read(apiServiceProvider);
+  if (usuario == null || api.token == null) return [];
+
+  return await api.getSolicitudesPendientesBodega();
 });
 
 // Solicitudes aprobadas (compatibilidad con flujo anterior)

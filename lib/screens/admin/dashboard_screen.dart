@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../theme/app_theme.dart';
 import '../../services/providers.dart';
@@ -47,6 +48,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final now = DateTime.now();
     _desde = DateTime(now.year, now.month, now.day);
     _hasta = DateTime(now.year, now.month, now.day, 23, 59, 59);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.invalidate(lineasProvider);
+    });
     _load();
   }
 
@@ -56,6 +60,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           hasta: _hasta,
           lineaIds: _lineasIdsFiltro.isEmpty ? null : _lineasIdsFiltro.toList(),
         );
+  }
+
+  void _recargarDatos() {
+    ref.invalidate(lineasProvider);
+    setState(_load);
   }
 
   void _setRange(DateTime desde, DateTime hasta) {
@@ -167,7 +176,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             desde: _desde,
             hasta: _hasta,
             fmtDate: _fmtDate,
-            onRefresh: () => setState(_load),
+            onRefresh: _recargarDatos,
           ),
           _Filtros(
             periodo: _periodo,
@@ -207,6 +216,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 final variacionPrecios = _list(data['variacion_precios']);
                 final produccionUnitaria = _list(data['produccion_unitaria']);
                 final ultimas = _list(data['ultimas_solicitudes']);
+                final produccionSinCargar = produccionUnitaria.isNotEmpty &&
+                    produccionUnitaria.every((raw) =>
+                        _num(_map(raw), 'cantidad_producida') <= 0);
+                final necesitaProduccion =
+                    produccionUnitaria.isEmpty || produccionSinCargar;
 
                 final gastoTotal = _num(totales, 'costo_total');
                 final totalEntregadas = _num(totales, 'entregadas');
@@ -259,14 +273,27 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         title: 'Costo unitario por producción',
                         subtitle:
                             'Cruza las unidades producidas con los materiales despachados para ver costo por cilindro, asa, base o reparación.',
-                        child: produccionUnitaria.isEmpty
-                            ? const _EmptyState(
-                                msg:
-                                    'Registra producción diaria para calcular costo unitario')
-                            : _TablaCostoUnitarioProduccion(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (necesitaProduccion) ...[
+                              _ProduccionPendienteNotice(
+                                onAbrirProduccion: () =>
+                                    context.go('/admin/produccion'),
+                              ),
+                              const SizedBox(height: 12),
+                            ],
+                            if (produccionUnitaria.isEmpty)
+                              const _EmptyState(
+                                msg: 'Ingresa la cantidad producida para calcular el costo unitario. Si todavía no la tienes, puedes dejarla pendiente y volver luego.',
+                              )
+                            else
+                              _TablaCostoUnitarioProduccion(
                                 data: produccionUnitaria,
                                 fmtMoney: _fmtMoney,
                               ),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 16),
                       _SectionCard(
@@ -3205,11 +3232,12 @@ class _TablaCostoUnitarioProduccion extends StatelessWidget {
           _num(grupo, 'despachos').toInt() + _num(row, 'despachos').toInt();
 
       final fechas = List<String>.from(grupo['fechas'] as List);
-      final dia = _str(row, 'dia');
-      if (dia.isNotEmpty && !fechas.contains(dia)) {
-        fechas.add(dia);
-        fechas.sort((a, b) => b.compareTo(a));
+      for (final fecha in _fechasDelGrupo(row)) {
+        if (fecha.isNotEmpty && !fechas.contains(fecha)) {
+          fechas.add(fecha);
+        }
       }
+      fechas.sort((a, b) => b.compareTo(a));
       grupo['fechas'] = fechas;
     }
 
@@ -3233,6 +3261,19 @@ class _TablaCostoUnitarioProduccion extends StatelessWidget {
     if (raw is List) {
       return raw.map((e) => e.toString()).where((e) => e.isNotEmpty).toList();
     }
+    if (raw is String && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is List) {
+          return decoded
+              .map((e) => e.toString())
+              .where((e) => e.isNotEmpty)
+              .toList();
+        }
+      } catch (_) {
+        return [raw];
+      }
+    }
     return const [];
   }
 
@@ -3246,6 +3287,68 @@ class _TablaCostoUnitarioProduccion extends StatelessWidget {
       ..sort((a, b) => b.compareTo(a));
 
     return parsed.first;
+  }
+}
+
+class _ProduccionPendienteNotice extends StatelessWidget {
+  final VoidCallback onAbrirProduccion;
+
+  const _ProduccionPendienteNotice({
+    required this.onAbrirProduccion,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFDF6E8),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFF7C948)),
+      ),
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 10,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        alignment: WrapAlignment.spaceBetween,
+        children: [
+          const SizedBox(
+            width: 520,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Falta registrar producción para este filtro',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: TecneroTheme.azulOscuro,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Si tienes la cantidad producida, regístrala en Producción para calcular el costo unitario real. Si todavía no la tienes, puedes dejarla pendiente y volver más tarde.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: TecneroTheme.textoSecundario,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          ElevatedButton.icon(
+            onPressed: onAbrirProduccion,
+            icon: const Icon(Icons.add_chart_outlined, size: 18),
+            label: const Text('Ir a Producción'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: TecneroTheme.azulOscuro,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

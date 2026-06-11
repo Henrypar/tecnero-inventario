@@ -29,6 +29,9 @@ class _ProduccionScreenState extends ConsumerState<ProduccionScreen> {
     final now = DateTime.now();
     _desde = DateTime(now.year, now.month, 1);
     _hasta = DateTime(now.year, now.month, now.day, 23, 59, 59);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.invalidate(lineasProvider);
+    });
     _load();
   }
 
@@ -38,6 +41,14 @@ class _ProduccionScreenState extends ConsumerState<ProduccionScreen> {
           hasta: _hasta,
           lineaIds: _lineasIds.isEmpty ? null : _lineasIds.toList(),
         );
+  }
+
+  Future<void> _recargarTodo() async {
+    ref.invalidate(lineasProvider);
+    ref.invalidate(produccionDiariaProvider);
+    _load();
+    setState(() {});
+    await ref.read(lineasProvider.future);
   }
 
   Future<void> _seleccionarRango() async {
@@ -67,15 +78,20 @@ class _ProduccionScreenState extends ConsumerState<ProduccionScreen> {
     });
   }
 
-  Future<void> _abrirRegistro(List<models.LineaProduccion> lineas) async {
+  Future<void> _abrirRegistro() async {
+    ref.invalidate(lineasProvider);
+    final lineasActualizadas = await ref.read(lineasProvider.future);
+    if (!mounted) return;
+
     final creado = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => _ProduccionDialog(lineas: lineas),
+      builder: (_) => _ProduccionDialog(lineas: lineasActualizadas),
     );
 
     if (creado != true) return;
 
+    ref.invalidate(lineasProvider);
     ref.invalidate(produccionDiariaProvider);
     setState(_load);
 
@@ -110,6 +126,7 @@ class _ProduccionScreenState extends ConsumerState<ProduccionScreen> {
     if (confirmar != true) return;
 
     await ref.read(apiServiceProvider).eliminarProduccionDiaria(id);
+    ref.invalidate(lineasProvider);
     ref.invalidate(produccionDiariaProvider);
     setState(_load);
   }
@@ -123,6 +140,7 @@ class _ProduccionScreenState extends ConsumerState<ProduccionScreen> {
 
     if (editado != true) return;
 
+    ref.invalidate(lineasProvider);
     ref.invalidate(produccionDiariaProvider);
     setState(_load);
 
@@ -155,6 +173,7 @@ class _ProduccionScreenState extends ConsumerState<ProduccionScreen> {
   @override
   Widget build(BuildContext context) {
     final lineasAsync = ref.watch(lineasProvider);
+    final lineasDisponibles = lineasAsync.asData?.value ?? const [];
     final isMobile = Responsive.isMobile(context);
 
     return Scaffold(
@@ -175,6 +194,12 @@ class _ProduccionScreenState extends ConsumerState<ProduccionScreen> {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     const _HeaderTitle(),
+                    FilledButton.icon(
+                      onPressed:
+                          lineasDisponibles.isNotEmpty ? _abrirRegistro : null,
+                      icon: const Icon(Icons.add_chart_outlined, size: 18),
+                      label: const Text('Registrar producción'),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 14),
@@ -182,7 +207,7 @@ class _ProduccionScreenState extends ConsumerState<ProduccionScreen> {
                   desde: _desde,
                   hasta: _hasta,
                   lineasIds: _lineasIds,
-                  lineas: lineasAsync.asData?.value ?? const [],
+                  lineas: lineasDisponibles,
                   fmtDate: _fmtDate,
                   onRango: _seleccionarRango,
                   onLineasChanged: (value) {
@@ -212,13 +237,18 @@ class _ProduccionScreenState extends ConsumerState<ProduccionScreen> {
                   0.0,
                   (sum, row) => sum + _num(row['cantidad']),
                 );
+                final registrosReales =
+                    rows.where((row) => !_esPendiente(row)).length;
 
                 if (rows.isEmpty) {
-                  return const _EmptyProduccion();
+                  return _EmptyProduccion(
+                    onRegistrar:
+                        lineasDisponibles.isNotEmpty ? _abrirRegistro : null,
+                  );
                 }
 
                 return RefreshIndicator(
-                  onRefresh: () async => setState(_load),
+                  onRefresh: _recargarTodo,
                   child: ListView(
                     padding: EdgeInsets.fromLTRB(
                       isMobile ? 12 : 24,
@@ -228,7 +258,7 @@ class _ProduccionScreenState extends ConsumerState<ProduccionScreen> {
                     ),
                     children: [
                       _ResumenProduccion(
-                        registros: rows.length,
+                        registros: registrosReales,
                         unidades: totalUnidades,
                       ),
                       const SizedBox(height: 14),
@@ -273,6 +303,7 @@ class _ProduccionScreenState extends ConsumerState<ProduccionScreen> {
 
     return grupos;
   }
+
 }
 
 class _HeaderTitle extends StatelessWidget {
@@ -705,9 +736,20 @@ class _ProduccionCard extends StatelessWidget {
         '${row['registradoPor'] ?? row['registrado_por'] ?? ''}';
     final observaciones = '${row['observaciones'] ?? ''}'.trim();
     final id = '${row['id'] ?? ''}';
+    final pendiente = _esPendiente(row);
+    final iconColor = pendiente ? const Color(0xFF6B7280) : TecneroTheme.naranja;
+    final cardColor = pendiente ? const Color(0xFFF8FAFC) : Colors.white;
+    final borderColor =
+        pendiente ? const Color(0xFFD1D5DB) : TecneroTheme.grisBorde;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
+      color: cardColor,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: borderColor),
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: InkWell(
         onTap: onVerDetalle,
         child: Padding(
@@ -717,12 +759,12 @@ class _ProduccionCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(9),
                 decoration: BoxDecoration(
-                  color: TecneroTheme.naranja.withValues(alpha: 0.10),
+                  color: iconColor.withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.precision_manufacturing_outlined,
-                  color: TecneroTheme.naranja,
+                  color: iconColor,
                   size: 20,
                 ),
               ),
@@ -731,22 +773,33 @@ class _ProduccionCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      linea,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w900,
-                        color: TecneroTheme.azulOscuro,
-                      ),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          linea,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w900,
+                            color: pendiente
+                                ? const Color(0xFF4B5563)
+                                : TecneroTheme.azulOscuro,
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 3),
                     Text(
                       '${_formatCantidad(cantidad)} $unidad',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
-                        color: TecneroTheme.textoPrimario,
+                        color: pendiente
+                            ? const Color(0xFF6B7280)
+                            : TecneroTheme.textoPrimario,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -787,6 +840,11 @@ class _ProduccionCard extends StatelessWidget {
       ),
     );
   }
+}
+
+bool _esPendiente(Map<String, dynamic> row) {
+  return row['__pendiente'] == true ||
+      (_num(row['cantidad']) <= 0 && '${row['id'] ?? ''}'.trim().isEmpty);
 }
 
 class _ProduccionDialog extends ConsumerStatefulWidget {
@@ -1098,14 +1156,42 @@ class _ErrorBox extends StatelessWidget {
 }
 
 class _EmptyProduccion extends StatelessWidget {
-  const _EmptyProduccion();
+  final VoidCallback? onRegistrar;
+
+  const _EmptyProduccion({this.onRegistrar});
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
-      child: Text(
-        'No hay produccion registrada en el periodo',
-        style: TextStyle(color: TecneroTheme.textoSecundario),
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'No hay producción registrada en el periodo',
+              style: TextStyle(color: TecneroTheme.textoSecundario),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Si todavía no tienes la cantidad producida, puedes dejarla pendiente y volver luego para completar el registro.',
+              style: TextStyle(
+                color: TecneroTheme.textoSecundario,
+                fontSize: 12,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            if (onRegistrar != null) ...[
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: onRegistrar,
+                icon: const Icon(Icons.add_chart_outlined, size: 18),
+                label: const Text('Registrar producción'),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -1227,12 +1313,37 @@ class _EditarProduccionDialogState
     });
 
     try {
-      await ref.read(apiServiceProvider).actualizarProduccionDiaria(
-            id: widget.registro['id'],
-            cantidad: cantidad,
-            unidad: unidad,
-            observaciones: _obsCtrl.text.trim().isEmpty ? null : _obsCtrl.text,
-          );
+      final id = '${widget.registro['id'] ?? ''}'.trim();
+      final fecha = DateTime.tryParse(
+            '${widget.registro['fecha'] ?? DateTime.now().toIso8601String()}',
+          ) ??
+          DateTime.now();
+      final lineaId =
+          '${widget.registro['lineaId'] ?? widget.registro['linea_id'] ?? ''}'
+              .trim();
+
+      if (id.isEmpty) {
+        if (lineaId.isEmpty) {
+          throw Exception('No se pudo identificar la línea de producción');
+        }
+
+        await ref.read(apiServiceProvider).crearProduccionDiaria(
+              fecha: fecha,
+              lineaId: lineaId,
+              cantidad: cantidad,
+              unidad: unidad,
+              observaciones:
+                  _obsCtrl.text.trim().isEmpty ? null : _obsCtrl.text,
+            );
+      } else {
+        await ref.read(apiServiceProvider).actualizarProduccionDiaria(
+              id: id,
+              cantidad: cantidad,
+              unidad: unidad,
+              observaciones:
+                  _obsCtrl.text.trim().isEmpty ? null : _obsCtrl.text,
+            );
+      }
 
       if (mounted) Navigator.pop(context, true);
     } catch (e) {

@@ -374,47 +374,63 @@ class DashboardService {
 
     const produccionUnitaria = await this.dataSource.query(
       `
-      WITH costos AS (
+      WITH lineas AS (
         SELECT
-          COALESCE(s.fecha_entrega, s.fecha)::date AS fecha,
+          lp.id,
+          lp.nombre
+        FROM lineas_produccion lp
+        WHERE lp.activa = true
+          AND ($3::uuid IS NULL OR lp.id = $3::uuid)
+          AND ($4::text[] IS NULL OR lp.id::text = ANY($4::text[]))
+      ),
+      costos AS (
+        SELECT
           s.linea_id,
           COALESCE(SUM(d.subtotal), 0)::float AS costo_materiales,
           COUNT(DISTINCT s.id)::int AS despachos
         FROM detalle_solicitud d
         INNER JOIN solicitudes s ON s.id = d.solicitud_id
         WHERE ${filtroBase}
-        GROUP BY COALESCE(s.fecha_entrega, s.fecha)::date, s.linea_id
+        GROUP BY s.linea_id
       ),
       produccion AS (
         SELECT
-          fecha,
           linea_id,
           linea_nombre,
           unidad,
-          SUM(cantidad)::float AS cantidad_producida
+          SUM(cantidad)::float AS cantidad_producida,
+          COALESCE(
+            JSON_AGG(TO_CHAR(fecha, 'YYYY-MM-DD') ORDER BY fecha DESC)
+              FILTER (WHERE fecha IS NOT NULL),
+            '[]'::json
+          ) AS fechas
         FROM produccion_diaria
         WHERE fecha BETWEEN $1::date AND $2::date
           AND ($3::uuid IS NULL OR linea_id = $3::uuid)
           AND ($4::text[] IS NULL OR linea_id::text = ANY($4::text[]))
-        GROUP BY fecha, linea_id, linea_nombre, unidad
+        GROUP BY linea_id, linea_nombre, unidad
       )
       SELECT
-        TO_CHAR(p.fecha, 'YYYY-MM-DD') AS dia,
-        p.linea_id,
-        p.linea_nombre,
-        p.unidad,
-        p.cantidad_producida,
-        p.cantidad_producida AS cantidad_total,
+        COALESCE(p.linea_id, l.id)::text AS linea_id,
+        COALESCE(p.linea_nombre, l.nombre) AS linea_nombre,
+        COALESCE(NULLIF(p.unidad, ''), 'unidades') AS unidad,
+        COALESCE(p.cantidad_producida, 0)::float AS cantidad_producida,
+        COALESCE(p.cantidad_producida, 0)::float AS cantidad_total,
         COALESCE(c.costo_materiales, 0)::float AS costo_materiales,
         COALESCE(c.despachos, 0)::int AS despachos,
+        COALESCE(p.fechas, '[]'::json) AS fechas,
         CASE
-          WHEN p.cantidad_producida > 0
-          THEN (COALESCE(c.costo_materiales, 0) / p.cantidad_producida)::float
+          WHEN COALESCE(p.cantidad_producida, 0) > 0
+          THEN (COALESCE(c.costo_materiales, 0) / COALESCE(p.cantidad_producida, 0))::float
           ELSE 0::float
         END AS costo_unitario
-      FROM produccion p
-      LEFT JOIN costos c ON c.fecha = p.fecha AND c.linea_id = p.linea_id
-      ORDER BY p.fecha DESC, costo_unitario DESC
+      FROM lineas l
+      LEFT JOIN produccion p ON p.linea_id = l.id
+      LEFT JOIN costos c ON c.linea_id = l.id
+      WHERE COALESCE(p.cantidad_producida, 0) > 0
+        OR COALESCE(c.costo_materiales, 0) > 0
+        OR COALESCE(c.despachos, 0) > 0
+      ORDER BY COALESCE(p.cantidad_producida, 0) DESC, l.nombre ASC
       `,
       params,
     );
