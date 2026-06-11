@@ -70,26 +70,22 @@ class NotificacionesPage extends ConsumerWidget {
             );
           }
 
-          return ListView.separated(
+          return ListView(
             padding: const EdgeInsets.all(16),
-            itemCount: items.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
-            itemBuilder: (context, index) {
-              final item = items[index];
-              return _NotificacionTile(
-                item: item,
-                fecha: dateFormat.format(item.fechaCreacion),
-                onMarcarLeida: item.leida
-                    ? null
-                    : () async {
-                        await ref
-                            .read(notificacionesServiceProvider)
-                            .marcarComoLeida(item.id);
-                        ref.invalidate(notificacionesProvider);
-                        ref.invalidate(contadorNotificacionesNoLeidasProvider);
-                      },
-              );
-            },
+            children: [
+              _SeccionNotificaciones(
+                titulo: 'Todas las notificaciones',
+                items: items,
+                dateFormat: dateFormat,
+                onMarcarLeida: (item) async {
+                  await ref.read(notificacionesServiceProvider).marcarComoLeida(
+                        item.id,
+                      );
+                  ref.invalidate(notificacionesProvider);
+                  ref.invalidate(contadorNotificacionesNoLeidasProvider);
+                },
+              ),
+            ],
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -103,6 +99,59 @@ class NotificacionesPage extends ConsumerWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _SeccionNotificaciones extends StatelessWidget {
+  final String titulo;
+  final List<NotificacionInterna> items;
+  final DateFormat dateFormat;
+  final Future<void> Function(NotificacionInterna item)? onMarcarLeida;
+
+  const _SeccionNotificaciones({
+    required this.titulo,
+    required this.items,
+    required this.dateFormat,
+    required this.onMarcarLeida,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          titulo,
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 10),
+        ListView.separated(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: items.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 10),
+          itemBuilder: (context, index) {
+            final item = items[index];
+            return _NotificacionTile(
+              item: item,
+              fecha: dateFormat.format(item.fechaCreacion),
+              onMarcarLeida: onMarcarLeida == null
+                  ? null
+                  : () async {
+                      await onMarcarLeida!(item);
+                    },
+            );
+          },
+        ),
+      ],
     );
   }
 }
@@ -131,6 +180,11 @@ Future<void> _abrirConfigAlertasStock(
       SnackBar(
         content: Text('No se pudieron cargar los productos: $e'),
         backgroundColor: Colors.red,
+        showCloseIcon: true,
+        closeIconColor: Colors.white,
+        duration: const Duration(seconds: 5),
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }

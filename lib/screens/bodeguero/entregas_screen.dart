@@ -230,6 +230,17 @@ class _EntregasScreenState extends ConsumerState<EntregasScreen> {
               ],
             ),
           ),
+          Container(
+            width: double.infinity,
+            color: const Color(0xFFF8FAFC),
+            padding: EdgeInsets.fromLTRB(
+              isMobile ? 12 : 20,
+              10,
+              isMobile ? 12 : 20,
+              10,
+            ),
+            child: const _DespachosResumenBar(),
+          ),
           Expanded(
             child: pendientesAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
@@ -293,6 +304,111 @@ class _EntregasScreenState extends ConsumerState<EntregasScreen> {
         onPressed: _abrirDespachoDirecto,
         icon: const Icon(Icons.add_task_outlined),
         label: const Text('Despacho directo'),
+      ),
+    );
+  }
+}
+
+class _DespachosResumenBar extends ConsumerWidget {
+  const _DespachosResumenBar();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final pendientesAsync = ref.watch(solicitudesPendientesBodegaProvider);
+    final entregadasAsync = ref.watch(solicitudesEntregadasProvider);
+    final historialAsync = ref.watch(solicitudesHistorialBodegaProvider);
+
+    final loading =
+        pendientesAsync.isLoading || entregadasAsync.isLoading || historialAsync.isLoading;
+    final error = pendientesAsync.hasError
+        ? pendientesAsync.error
+        : entregadasAsync.hasError
+            ? entregadasAsync.error
+            : historialAsync.error;
+
+    if (loading) {
+      return const LinearProgressIndicator(minHeight: 3);
+    }
+
+    if (error != null) {
+      return Text(
+        'No se pudo cargar el resumen de despachos: $error',
+        style: const TextStyle(
+          fontSize: 12,
+          color: TecneroTheme.textoSecundario,
+        ),
+      );
+    }
+
+    final pendientes = pendientesAsync.asData?.value ?? const [];
+    final entregadas = entregadasAsync.asData?.value ?? const [];
+    final historial = historialAsync.asData?.value ?? const [];
+    final rechazadas = historial.where((s) => s.estado == 'rechazada').length;
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      alignment: WrapAlignment.spaceBetween,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _ResumenPill(
+              label: 'Pendientes',
+              value: '${pendientes.length}',
+              color: const Color(0xFF2563EB),
+            ),
+            _ResumenPill(
+              label: 'Entregadas',
+              value: '${entregadas.length}',
+              color: const Color(0xFF059669),
+            ),
+            _ResumenPill(
+              label: 'Rechazadas',
+              value: '$rechazadas',
+              color: const Color(0xFFB91C1C),
+            ),
+          ],
+        ),
+        TextButton.icon(
+          onPressed: () => context.go('/bodeguero/historial'),
+          icon: const Icon(Icons.history, size: 18),
+          label: const Text('Ver historial'),
+        ),
+      ],
+    );
+  }
+}
+
+class _ResumenPill extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+
+  const _ResumenPill({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Text(
+        '$label: $value',
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+          color: color,
+        ),
       ),
     );
   }

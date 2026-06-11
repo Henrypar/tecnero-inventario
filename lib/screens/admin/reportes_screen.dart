@@ -932,6 +932,29 @@ class _LineBarChart extends StatelessWidget {
                   ],
                 );
               }).toList(),
+              barTouchData: BarTouchData(
+                enabled: true,
+                touchTooltipData: BarTouchTooltipData(
+                  getTooltipColor: (_) => Colors.white,
+                  getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                    if (groupIndex < 0 || groupIndex >= rows.length) return null;
+                    final row = rows[groupIndex];
+                    final nombre =
+                        _str(row, 'linea_nombre', alt: 'lineaNombre').isEmpty
+                            ? 'Sin línea'
+                            : _str(row, 'linea_nombre', alt: 'lineaNombre');
+                    final monto = fmt.format(_num(row, 'costo_total'));
+                    return BarTooltipItem(
+                      '$nombre\n$monto',
+                      const TextStyle(
+                        color: TecneroTheme.textoPrimario,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12,
+                      ),
+                    );
+                  },
+                ),
+              ),
             ),
           ),
         ),
@@ -1013,14 +1036,14 @@ class _ChartLegend extends StatelessWidget {
         final row = entry.value;
         final color = _chartColor(index);
 
-        return Container(
+          return Container(
           width: double.infinity,
           margin: const EdgeInsets.only(bottom: 7),
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.08),
+            color: Colors.white,
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: color.withValues(alpha: 0.22)),
+            border: Border.all(color: color.withValues(alpha: 0.28)),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1059,7 +1082,7 @@ class _ChartLegend extends StatelessWidget {
                 valueBuilder(row),
                 style: TextStyle(
                   fontSize: 12,
-                  color: color,
+                  color: TecneroTheme.textoPrimario,
                   fontWeight: FontWeight.w900,
                 ),
               ),

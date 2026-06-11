@@ -6,6 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 import '../../theme/app_theme.dart';
 import '../../services/providers.dart';
@@ -156,6 +159,711 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
+  Future<void> _exportarPdf(Map<String, dynamic> data) async {
+    try {
+      final pdf = pw.Document();
+      final totales = _map(data['totales']);
+      final porLinea = _list(data['por_linea']).map(_map).toList();
+      final gastoPorDia = _list(data['gasto_por_dia']).map(_map).toList();
+      final gastoLineaDia = _list(data['gasto_linea_dia']).map(_map).toList();
+      final topCosto = _list(data['top_materiales']).map(_map).toList();
+      final topCantidad =
+          _list(data['top_materiales_cantidad']).map(_map).toList();
+      final produccionUnitaria =
+          _list(data['produccion_unitaria']).map(_map).toList();
+      final ultimas = _list(data['ultimas_solicitudes']).map(_map).toList();
+
+      PdfColor pdfColor(Color color) =>
+          PdfColor(color.r, color.g, color.b, color.a);
+
+    pw.Widget metric(String label, String value, String hint) {
+      return pw.Container(
+        padding: const pw.EdgeInsets.all(10),
+        decoration: pw.BoxDecoration(
+          border: pw.Border.all(color: PdfColors.grey300),
+          borderRadius: pw.BorderRadius.circular(8),
+        ),
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text(label,
+                style: const pw.TextStyle(
+                  fontSize: 9,
+                  color: PdfColors.grey700,
+                )),
+            pw.SizedBox(height: 4),
+            pw.Text(
+              value,
+              style: pw.TextStyle(
+                fontSize: 14,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.black,
+              ),
+            ),
+            pw.SizedBox(height: 2),
+            pw.Text(
+              hint,
+              style: const pw.TextStyle(
+                fontSize: 8,
+                color: PdfColors.grey700,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    pw.Widget cell(String text, {bool bold = false}) {
+      return pw.Padding(
+        padding: const pw.EdgeInsets.all(6),
+        child: pw.Text(
+          text,
+          style: pw.TextStyle(
+            fontSize: 9,
+            fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+          ),
+        ),
+      );
+    }
+
+    pw.Widget lineChip(String text, Color color) {
+      return pw.Row(
+        children: [
+          pw.Container(
+            width: 8,
+            height: 8,
+            decoration:
+                pw.BoxDecoration(color: pdfColor(color), shape: pw.BoxShape.circle),
+          ),
+          pw.SizedBox(width: 6),
+          pw.Expanded(
+            child: pw.Text(
+              text.isEmpty ? 'Sin línea' : text,
+              style: const pw.TextStyle(fontSize: 9),
+            ),
+          ),
+        ],
+      );
+    }
+
+    List<Map<String, dynamic>> lineasDelMaterial(Map<String, dynamic> row) {
+      final raw = row['lineas'] ?? row['detalle_lineas'] ?? row['lineas_produccion'];
+      if (raw is List) {
+        return raw
+            .map((e) => _map(e))
+            .where((e) => e.isNotEmpty)
+            .toList();
+      }
+      if (raw is String && raw.trim().isNotEmpty) {
+        try {
+          final decoded = jsonDecode(raw);
+          if (decoded is List) {
+            return decoded
+                .map((e) => _map(e))
+                .where((e) => e.isNotEmpty)
+                .toList();
+          }
+        } catch (_) {
+          return const [];
+        }
+      }
+      return const [];
+    }
+
+    String nombreLinea(Map<String, dynamic> row) {
+      final nombre = _str(row, 'linea_nombre', alt: 'lineaNombre');
+      return nombre.isEmpty ? 'Sin línea' : nombre;
+    }
+
+    String unidadMaterial(Map<String, dynamic> row) {
+      final unidad = _str(row, 'unidad_medida', alt: 'unidadMedida').isEmpty
+          ? _str(row, 'unidad', alt: 'unidadMedida')
+          : _str(row, 'unidad_medida', alt: 'unidadMedida');
+      return unidad.isEmpty ? 'unid' : unidad;
+    }
+
+    String fechaPdf(dynamic value) {
+      final parsed = DateTime.tryParse(value?.toString() ?? '');
+      if (parsed == null) return value?.toString() ?? '';
+      return _fmtDate.format(parsed);
+    }
+
+    pw.Widget lineaMiniChip(String text, Color color) {
+      return pw.Row(
+        mainAxisSize: pw.MainAxisSize.min,
+        children: [
+          pw.Container(
+            width: 8,
+            height: 8,
+            decoration: pw.BoxDecoration(
+              color: pdfColor(color),
+              shape: pw.BoxShape.circle,
+            ),
+          ),
+          pw.SizedBox(width: 6),
+          pw.Text(
+            text,
+            style: const pw.TextStyle(fontSize: 9),
+          ),
+        ],
+      );
+    }
+
+    pw.Widget lineaDetallePdf(
+      Map<String, dynamic> linea, {
+      required bool mostrarCantidad,
+      required int index,
+    }) {
+      final color = _lineaColor(index);
+      final nombre = nombreLinea(linea);
+      final cantidad = _num(linea, 'cantidad_total');
+      final costo = _num(linea, 'costo_total');
+      final valor = mostrarCantidad
+          ? '${_formatCantidad(cantidad)} ${unidadMaterial(linea)}'
+          : _fmtMoney.format(costo);
+
+      return pw.Padding(
+        padding: const pw.EdgeInsets.only(bottom: 5),
+        child: pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Container(
+              width: 8,
+              height: 8,
+              margin: const pw.EdgeInsets.only(top: 4),
+              decoration: pw.BoxDecoration(
+                color: pdfColor(color),
+                shape: pw.BoxShape.circle,
+              ),
+            ),
+            pw.SizedBox(width: 6),
+            pw.Expanded(
+              child: pw.Text(
+                nombre,
+                style: const pw.TextStyle(fontSize: 9),
+              ),
+            ),
+            pw.SizedBox(width: 8),
+            pw.Text(
+              valor,
+              style: pw.TextStyle(
+                fontSize: 9,
+                fontWeight: pw.FontWeight.bold,
+                color: pdfColor(color),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    pw.Widget materialesConDetallePdf({
+      required String title,
+      required List<Map<String, dynamic>> rows,
+      required bool mostrarCantidad,
+    }) {
+      final filtrados = rows.where((row) {
+        final cantidad = _num(row, 'cantidad_total');
+        final costo = _num(row, 'costo_total');
+        return cantidad > 0 || costo > 0;
+      }).toList();
+
+      return pw.Container(
+        padding: const pw.EdgeInsets.all(10),
+        decoration: pw.BoxDecoration(
+          border: pw.Border.all(color: PdfColors.grey300),
+          borderRadius: pw.BorderRadius.circular(8),
+        ),
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text(
+              title,
+              style: pw.TextStyle(
+                fontSize: 11,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+            pw.SizedBox(height: 8),
+            if (filtrados.isEmpty)
+              pw.Text(
+                'Sin datos para este periodo.',
+                style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
+              )
+            else
+              ...filtrados.asMap().entries.map((entry) {
+                final index = entry.key;
+                final row = entry.value;
+                final material =
+                    _str(row, 'material_nombre', alt: 'nombre').isEmpty
+                        ? _str(row, 'nombre')
+                        : _str(row, 'material_nombre', alt: 'nombre');
+                final codigo = _str(row, 'codigo', alt: 'material_codigo');
+                final cantidad = _num(row, 'cantidad_total');
+                final costo = _num(row, 'costo_total');
+                final lineas = lineasDelMaterial(row)
+                    .where((linea) =>
+                        _num(linea, 'cantidad_total') > 0 ||
+                        _num(linea, 'costo_total') > 0)
+                    .toList();
+
+                return pw.Container(
+                  margin: const pw.EdgeInsets.only(bottom: 8),
+                  padding: const pw.EdgeInsets.all(8),
+                  decoration: pw.BoxDecoration(
+                    color: PdfColors.white,
+                    border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
+                    borderRadius: pw.BorderRadius.circular(6),
+                  ),
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Row(
+                        children: [
+                          pw.Container(
+                            width: 8,
+                            height: 8,
+                            decoration: pw.BoxDecoration(
+                              color: pdfColor(_lineaColor(index)),
+                              shape: pw.BoxShape.circle,
+                            ),
+                          ),
+                          pw.SizedBox(width: 6),
+                          pw.Expanded(
+                            child: pw.Text(
+                              codigo.isEmpty ? material : '$codigo · $material',
+                              style: pw.TextStyle(
+                                fontSize: 10,
+                                fontWeight: pw.FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          pw.SizedBox(width: 8),
+                          pw.Text(
+                            mostrarCantidad
+                                ? '${_formatCantidad(cantidad)} ${unidadMaterial(row)}'
+                                : _fmtMoney.format(costo),
+                            style: pw.TextStyle(
+                              fontSize: 10,
+                              fontWeight: pw.FontWeight.bold,
+                              color: pdfColor(_lineaColor(index)),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (lineas.isNotEmpty) ...[
+                        pw.SizedBox(height: 6),
+                        pw.Container(
+                          width: double.infinity,
+                          padding: const pw.EdgeInsets.all(8),
+                          decoration: pw.BoxDecoration(
+                            color: PdfColors.grey100,
+                            borderRadius: pw.BorderRadius.circular(6),
+                          ),
+                          child: pw.Column(
+                            crossAxisAlignment: pw.CrossAxisAlignment.start,
+                            children: [
+                              pw.Text(
+                                'Detalle por línea de producción',
+                                style: pw.TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: pw.FontWeight.bold,
+                                  color: PdfColors.grey700,
+                                ),
+                              ),
+                              pw.SizedBox(height: 5),
+                              ...lineas.asMap().entries.map(
+                                    (lineaEntry) => lineaDetallePdf(
+                                      lineaEntry.value,
+                                      mostrarCantidad: mostrarCantidad,
+                                      index: lineaEntry.key,
+                                    ),
+                                  ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                );
+              }),
+          ],
+        ),
+      );
+    }
+
+    pw.Widget gastoLineaDiaPdf(List<Map<String, dynamic>> rows) {
+      final filtrados = rows
+          .where((row) => _num(row, 'costo_total') > 0)
+          .toList()
+        ..sort((a, b) => _str(a, 'dia').compareTo(_str(b, 'dia')));
+
+      return pw.Container(
+        padding: const pw.EdgeInsets.all(10),
+        decoration: pw.BoxDecoration(
+          border: pw.Border.all(color: PdfColors.grey300),
+          borderRadius: pw.BorderRadius.circular(8),
+        ),
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text(
+              'Costo diario por línea',
+              style: pw.TextStyle(
+                fontSize: 11,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+            pw.SizedBox(height: 8),
+            pw.Table(
+              border:
+                  pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+              columnWidths: const {
+                0: pw.FixedColumnWidth(78),
+                1: pw.FlexColumnWidth(2),
+                2: pw.FixedColumnWidth(72),
+              },
+              children: [
+                pw.TableRow(
+                  decoration:
+                      const pw.BoxDecoration(color: PdfColors.grey200),
+                  children: [
+                    cell('Fecha', bold: true),
+                    cell('Línea', bold: true),
+                    cell('Costo', bold: true),
+                  ],
+                ),
+                ...filtrados.asMap().entries.map(
+                  (entry) => pw.TableRow(
+                    children: [
+                      cell(fechaPdf(_str(entry.value, 'dia'))),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(6),
+                        child: lineaMiniChip(
+                          nombreLinea(entry.value),
+                          _lineaColor(entry.key),
+                        ),
+                      ),
+                      cell(_fmtMoney.format(_num(entry.value, 'costo_total'))),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
+    pw.Widget produccionUnitariaPdf(List<Map<String, dynamic>> rows) {
+      final filtrados = rows
+          .where((row) => _num(row, 'cantidad_producida') > 0)
+          .toList();
+
+      return pw.Container(
+        padding: const pw.EdgeInsets.all(10),
+        decoration: pw.BoxDecoration(
+          border: pw.Border.all(color: PdfColors.grey300),
+          borderRadius: pw.BorderRadius.circular(8),
+        ),
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text(
+              'Producción unitaria',
+              style: pw.TextStyle(
+                fontSize: 11,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+            pw.SizedBox(height: 8),
+            if (filtrados.isEmpty)
+              pw.Text(
+                'Sin producción registrada en el periodo.',
+                style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
+              )
+            else
+              pw.Table(
+                border:
+                    pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+                columnWidths: const {
+                  0: pw.FlexColumnWidth(2),
+                  1: pw.FixedColumnWidth(52),
+                  2: pw.FixedColumnWidth(72),
+                  3: pw.FixedColumnWidth(72),
+                },
+                children: [
+                  pw.TableRow(
+                    decoration:
+                        const pw.BoxDecoration(color: PdfColors.grey200),
+                    children: [
+                      cell('Línea', bold: true),
+                      cell('Unid.', bold: true),
+                      cell('Prod.', bold: true),
+                      cell('Costo unit.', bold: true),
+                    ],
+                  ),
+                  ...filtrados.asMap().entries.map(
+                    (entry) {
+                      final row = entry.value;
+                      final color = _lineaColor(entry.key);
+                      return pw.TableRow(
+                        children: [
+                          pw.Padding(
+                            padding: const pw.EdgeInsets.all(6),
+                            child: lineaMiniChip(
+                              nombreLinea(row),
+                              color,
+                            ),
+                          ),
+                          cell(unidadMaterial(row)),
+                          cell(_formatCantidad(_num(row, 'cantidad_producida'))),
+                          cell(_fmtMoney.format(_num(row, 'costo_unitario'))),
+                        ],
+                      );
+                    },
+                  ),
+                ],
+              ),
+          ],
+        ),
+      );
+    }
+
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(20),
+          build: (context) => [
+            pw.Text(
+              'Dashboard de costos de producción',
+              style: pw.TextStyle(
+                fontSize: 20,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+            pw.SizedBox(height: 4),
+            pw.Text(
+              'Periodo: ${_fmtDate.format(_desde)} - ${_fmtDate.format(_hasta)}',
+              style: const pw.TextStyle(fontSize: 10),
+            ),
+            if (_lineasIdsFiltro.isNotEmpty)
+              pw.Text(
+                'Líneas filtradas: ${_lineasIdsFiltro.length}',
+                style: const pw.TextStyle(fontSize: 10),
+              ),
+            pw.SizedBox(height: 14),
+            pw.Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                pw.SizedBox(
+                  width: 165,
+                  child: metric(
+                    'Gasto materiales',
+                    _fmtMoney.format(_num(totales, 'costo_total')),
+                    'Salidas entregadas valorizadas',
+                  ),
+                ),
+                pw.SizedBox(
+                  width: 165,
+                  child: metric(
+                    'Entregas cerradas',
+                    _num(totales, 'entregadas').toInt().toString(),
+                    'Solicitudes ya despachadas',
+                  ),
+                ),
+                pw.SizedBox(
+                  width: 165,
+                  child: metric(
+                    'Promedio',
+                    _fmtMoney.format(_num(totales, 'promedio_solicitud')),
+                    'Costo promedio por pedido',
+                  ),
+                ),
+                pw.SizedBox(
+                  width: 165,
+                  child: metric(
+                    'Materiales usados',
+                    _num(totales, 'materiales_consumidos').toInt().toString(),
+                    'Ítems consumidos en el periodo',
+                  ),
+                ),
+              ],
+            ),
+            pw.SizedBox(height: 14),
+            pw.Text(
+              'Costo por línea',
+              style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 6),
+            pw.Table(
+              border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.6),
+              columnWidths: const {
+                0: pw.FlexColumnWidth(3),
+                1: pw.FixedColumnWidth(70),
+                2: pw.FixedColumnWidth(95),
+                3: pw.FixedColumnWidth(65),
+              },
+              children: [
+                pw.TableRow(
+                  decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                  children: [
+                    cell('Línea', bold: true),
+                    cell('Entregas', bold: true),
+                    cell('Costo', bold: true),
+                    cell('%', bold: true),
+                  ],
+                ),
+                for (var i = 0; i < porLinea.length; i++)
+                  pw.TableRow(
+                    children: [
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(6),
+                        child: lineChip(
+                          _str(porLinea[i], 'linea_nombre', alt: 'lineaNombre'),
+                          _lineaColor(i),
+                        ),
+                      ),
+                      cell(_num(porLinea[i], 'total_solicitudes').toInt().toString()),
+                      cell(_fmtMoney.format(_num(porLinea[i], 'costo_total'))),
+                      cell(
+                        _num(totales, 'costo_total') > 0
+                            ? '${((_num(porLinea[i], 'costo_total') / _num(totales, 'costo_total')) * 100).toStringAsFixed(1)}%'
+                            : '0%',
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+            pw.SizedBox(height: 14),
+            gastoLineaDiaPdf(gastoLineaDia),
+            pw.SizedBox(height: 14),
+            produccionUnitariaPdf(produccionUnitaria),
+            pw.SizedBox(height: 14),
+            materialesConDetallePdf(
+              title: 'Materiales por costo',
+              rows: topCosto,
+              mostrarCantidad: false,
+            ),
+            pw.SizedBox(height: 14),
+            materialesConDetallePdf(
+              title: 'Materiales por cantidad',
+              rows: topCantidad,
+              mostrarCantidad: true,
+            ),
+            pw.SizedBox(height: 14),
+            pw.Text(
+              'Últimos consumos registrados',
+              style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 6),
+            pw.Table(
+              border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.6),
+              columnWidths: const {
+                0: pw.FixedColumnWidth(74),
+                1: pw.FlexColumnWidth(1.5),
+                2: pw.FlexColumnWidth(1.2),
+                3: pw.FixedColumnWidth(80),
+              },
+              children: [
+                pw.TableRow(
+                  decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                  children: [
+                    cell('Fecha', bold: true),
+                    cell('Línea', bold: true),
+                    cell('Estado', bold: true),
+                    cell('Costo', bold: true),
+                  ],
+                ),
+                ...ultimas.take(8).map(
+                  (row) => pw.TableRow(
+                    children: [
+                      cell(_str(row, 'fecha')),
+                      cell(_str(row, 'linea_nombre', alt: 'lineaNombre')),
+                      cell(_str(row, 'estado')),
+                      cell(_fmtMoney.format(_num(row, 'costo_total'))),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            pw.SizedBox(height: 14),
+            pw.Text(
+              'Gasto por día',
+              style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 6),
+            pw.Table(
+              border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.6),
+              columnWidths: const {
+                0: pw.FixedColumnWidth(90),
+                1: pw.FixedColumnWidth(110),
+                2: pw.FixedColumnWidth(110),
+              },
+              children: [
+                pw.TableRow(
+                  decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                  children: [
+                    cell('Fecha', bold: true),
+                    cell('Costo', bold: true),
+                    cell('Solicitudes', bold: true),
+                  ],
+                ),
+                ...gastoPorDia.take(10).map(
+                  (row) => pw.TableRow(
+                    children: [
+                      cell(_str(row, 'dia')),
+                      cell(_fmtMoney.format(_num(row, 'costo_total'))),
+                      cell(_num(row, 'total_solicitudes').toInt().toString()),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      final bytes = await pdf.save();
+      final ok = await Printing.sharePdf(
+        bytes: bytes,
+        filename:
+            'dashboard-costos-${_fmtDate.format(_desde).replaceAll('/', '-')}-${_fmtDate.format(_hasta).replaceAll('/', '-')}.pdf',
+      );
+
+      if (!ok) {
+        throw Exception(
+          'El navegador bloqueó la descarga del PDF. Revisa permisos de descarga o ventanas emergentes.',
+        );
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('PDF generado y descargado'),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 3),
+          showCloseIcon: true,
+        ),
+      );
+    } catch (e, st) {
+      debugPrint('No se pudo exportar el PDF: $e');
+      debugPrintStack(stackTrace: st);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No se pudo descargar el PDF: $e'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 5),
+          showCloseIcon: true,
+          closeIconColor: Colors.white,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // El dashboard se recarga cuando cambia el contador global de refresco,
@@ -241,6 +949,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         fmtMoney: _fmtMoney,
                         onCalculadora: () =>
                             _abrirCalculadora(gastoTotal, produccionUnitaria),
+                        onPdf: () => _exportarPdf(data),
                       ),
                       const SizedBox(height: 16),
                       _ExecutiveSummary(
@@ -1333,11 +2042,13 @@ class _ActionBar extends StatelessWidget {
   final double gastoTotal;
   final NumberFormat fmtMoney;
   final VoidCallback onCalculadora;
+  final VoidCallback onPdf;
 
   const _ActionBar({
     required this.gastoTotal,
     required this.fmtMoney,
     required this.onCalculadora,
+    required this.onPdf,
   });
 
   @override
@@ -1373,14 +2084,35 @@ class _ActionBar extends StatelessWidget {
                 const SizedBox(height: 14),
                 SizedBox(
                   width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: onCalculadora,
-                    icon: const Icon(Icons.calculate_outlined, size: 17),
-                    label: const Text('Calcular costo unitario'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: TecneroTheme.naranja,
-                      foregroundColor: Colors.white,
-                    ),
+                  child: Column(
+                    children: [
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: onCalculadora,
+                          icon: const Icon(Icons.calculate_outlined, size: 17),
+                          label: const Text('Calcular costo unitario'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: TecneroTheme.naranja,
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: onPdf,
+                          icon: const Icon(Icons.picture_as_pdf_outlined,
+                              size: 17),
+                          label: const Text('Descargar PDF'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            side: const BorderSide(color: Colors.white54),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -1423,6 +2155,16 @@ class _ActionBar extends StatelessWidget {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: TecneroTheme.naranja,
                     foregroundColor: Colors.white,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                OutlinedButton.icon(
+                  onPressed: onPdf,
+                  icon: const Icon(Icons.picture_as_pdf_outlined, size: 17),
+                  label: const Text('Descargar PDF'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: const BorderSide(color: Colors.white54),
                   ),
                 ),
               ],
@@ -1769,6 +2511,7 @@ class _CostoDiaLineaChart extends StatelessWidget {
               ),
               barTouchData: BarTouchData(
                 touchTooltipData: BarTouchTooltipData(
+                  getTooltipColor: (_) => Colors.white,
                   getTooltipItem: (group, groupIndex, rod, rodIndex) {
                     final dia = groupIndex >= 0 && groupIndex < dias.length
                         ? _diaCorto(dias[groupIndex])
@@ -1776,7 +2519,9 @@ class _CostoDiaLineaChart extends StatelessWidget {
                     return BarTooltipItem(
                       '$dia\nTotal: ${fmtMoney.format(rod.toY)}',
                       const TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.w800),
+                        color: TecneroTheme.textoPrimario,
+                        fontWeight: FontWeight.w800,
+                      ),
                     );
                   },
                 ),

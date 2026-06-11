@@ -366,6 +366,7 @@ void _mostrarNotificacion(
       showCloseIcon: true,
       closeIconColor: Colors.white,
       duration: const Duration(seconds: 5),
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       behavior: SnackBarBehavior.floating,
     ),
   );
