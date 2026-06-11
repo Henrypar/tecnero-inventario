@@ -24,17 +24,27 @@ exports.AppModule = AppModule;
 exports.AppModule = AppModule = __decorate([
     (0, common_1.Module)({
         imports: [
-            typeorm_1.TypeOrmModule.forRoot({
-                type: 'postgres',
-                host: process.env.DB_HOST || '127.0.0.1',
-                port: parseInt(process.env.DB_PORT) || 5432,
-                username: process.env.DB_USER || 'henrymarin',
-                password: process.env.DB_PASSWORD || '',
-                database: process.env.DB_NAME || 'tecnero_inventario1',
-                autoLoadEntities: true,
-                synchronize: false,
-                logging: false,
-            }),
+            typeorm_1.TypeOrmModule.forRoot(process.env.DATABASE_URL
+                ? {
+                    type: 'postgres',
+                    url: process.env.DATABASE_URL,
+                    autoLoadEntities: true,
+                    synchronize: false,
+                    logging: false,
+                    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+                }
+                : {
+                    type: 'postgres',
+                    host: process.env.DB_HOST || '127.0.0.1',
+                    port: parseInt(process.env.DB_PORT || '5432', 10),
+                    username: process.env.DB_USER || 'henrymarin',
+                    password: process.env.DB_PASSWORD || '',
+                    database: process.env.DB_NAME || 'tecnero_inventario1',
+                    autoLoadEntities: true,
+                    synchronize: false,
+                    logging: false,
+                    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+                }),
             auth_module_1.AuthModule,
             materiales_module_1.MaterialesModule,
             lineas_module_1.LineasModule,

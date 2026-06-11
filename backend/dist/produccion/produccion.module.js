@@ -44,23 +44,61 @@ let ProduccionService = class ProduccionService {
     }
     async listar(desde, hasta, lineaId, lineaIds) {
         const lineasFiltro = normalizarLineaIds(lineaIds);
-        const qb = this.produccionRepo
-            .createQueryBuilder('p')
-            .orderBy('p.fecha', 'DESC')
-            .addOrderBy('p.createdAt', 'DESC');
-        if (desde) {
-            qb.andWhere('p.fecha >= :desde', { desde: normalizarFecha(desde) });
-        }
-        if (hasta) {
-            qb.andWhere('p.fecha <= :hasta', { hasta: normalizarFecha(hasta) });
-        }
-        if (lineasFiltro.length > 0) {
-            qb.andWhere('p.lineaId IN (:...lineasFiltro)', { lineasFiltro });
-        }
-        else if (lineaId) {
-            qb.andWhere('p.lineaId = :lineaId', { lineaId });
-        }
-        return qb.getMany();
+        const fechaDesde = normalizarFecha(desde);
+        const fechaHasta = normalizarFecha(hasta);
+        const params = [
+            fechaDesde,
+            fechaHasta,
+            lineaId ?? null,
+            lineasFiltro.length > 0 ? lineasFiltro : null,
+        ];
+        const whereLinea = `
+      ($3::uuid IS NULL OR p.linea_id = $3::uuid)
+      AND ($4::text[] IS NULL OR p.linea_id::text = ANY($4::text[]))
+    `;
+        return this.produccionRepo.manager.query(`
+      WITH produccion AS (
+        SELECT
+          p.fecha::date AS fecha,
+          p.linea_id,
+          MAX(p.linea_nombre) AS linea_nombre,
+          SUM(p.cantidad)::float AS cantidad,
+          MAX(NULLIF(p.unidad, '')) AS unidad,
+          MAX(p.registrado_por) AS registrado_por,
+          MAX(p.observaciones) AS observaciones,
+          MIN(p.created_at) AS created_at
+        FROM produccion_diaria p
+        WHERE p.fecha BETWEEN $1::date AND $2::date
+          AND ${whereLinea}
+        GROUP BY p.fecha::date, p.linea_id
+      ),
+      actividad AS (
+        SELECT DISTINCT
+          COALESCE(s.fecha_entrega, s.fecha)::date AS fecha,
+          s.linea_id,
+          COALESCE(s.linea_nombre, 'Sin línea') AS linea_nombre
+        FROM solicitudes s
+        WHERE s.estado = 'entregada'
+          AND COALESCE(s.fecha_entrega, s.fecha)::date BETWEEN $1::date AND $2::date
+          AND ($3::uuid IS NULL OR s.linea_id = $3::uuid)
+          AND ($4::text[] IS NULL OR s.linea_id::text = ANY($4::text[]))
+      )
+      SELECT
+        COALESCE(p.fecha, a.fecha)::date AS fecha,
+        COALESCE(p.linea_id, a.linea_id)::text AS linea_id,
+        COALESCE(p.linea_nombre, a.linea_nombre) AS linea_nombre,
+        COALESCE(p.cantidad, 0)::float AS cantidad,
+        COALESCE(NULLIF(p.unidad, ''), 'unidades') AS unidad,
+        COALESCE(p.registrado_por, '') AS registrado_por,
+        COALESCE(p.observaciones, '') AS observaciones,
+        COALESCE(p.created_at, NOW()) AS created_at,
+        CASE WHEN p.fecha IS NULL THEN true ELSE false END AS pendiente_produccion
+      FROM actividad a
+      FULL OUTER JOIN produccion p
+        ON p.fecha = a.fecha
+       AND p.linea_id = a.linea_id
+      ORDER BY COALESCE(p.fecha, a.fecha) DESC, COALESCE(p.created_at, NOW()) DESC, linea_nombre ASC
+      `, params);
     }
     async obtenerDetalle(fecha, lineaId) {
         const fechaFiltro = normalizarFecha(fecha);

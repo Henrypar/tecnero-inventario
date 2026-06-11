@@ -150,6 +150,7 @@ Requisitos:
 Variables de entorno sugeridas:
 
 ```text
+DATABASE_URL=postgresql://tu_usuario:tu_password@127.0.0.1:5432/tecnero_inventario1
 DB_HOST=127.0.0.1
 DB_PORT=5432
 DB_USER=tu_usuario
@@ -166,6 +167,8 @@ cd backend
 npm install
 npm run start:dev
 ```
+
+El backend carga automaticamente `backend/.env`.
 
 La API queda en:
 

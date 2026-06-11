@@ -30,14 +30,16 @@ class ApiService {
 
   static const String _configuredBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://192.168.1.6:3000/api',
+    defaultValue: 'http://localhost:3000/api',
   );
 
   static String get baseUrl {
     final uri = Uri.parse(_configuredBaseUrl);
 
     if (!kIsWeb && (uri.host == 'localhost' || uri.host == '127.0.0.1')) {
-      return uri.replace(host: '192.168.1.6').toString();
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        return uri.replace(host: '10.0.2.2').toString();
+      }
     }
 
     return _configuredBaseUrl;
@@ -579,11 +581,11 @@ class ApiService {
       rethrow;
     } on TimeoutException {
       throw const ApiConnectionException(
-        'No se pudo conectar con el servidor. Verifica que el backend esté encendido y que API_BASE_URL apunte a la IP de tu computadora.',
+        'No se pudo conectar con el servidor. Verifica que el backend esté encendido.',
       );
     } catch (_) {
-      throw const ApiConnectionException(
-        'No se pudo conectar con el servidor. Si estás usando un celular, no uses localhost: usa la IP de tu computadora en API_BASE_URL.',
+      throw ApiConnectionException(
+        'No se pudo conectar con el servidor en $baseUrl. Si estás usando un celular físico, ejecuta la app con API_BASE_URL apuntando a la IP de tu computadora.',
       );
     }
 

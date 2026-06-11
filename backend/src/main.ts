@@ -2,9 +2,12 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
-import { AppModule } from './app.module';
+import { loadEnvFile } from './config/load-env';
 
 async function bootstrap() {
+  loadEnvFile();
+
+  const { AppModule } = await import('./app.module');
   const app = await NestFactory.create(AppModule);
 
   app.enableCors({ origin: '*' });

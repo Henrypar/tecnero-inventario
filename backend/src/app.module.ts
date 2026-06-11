@@ -13,18 +13,29 @@ import { AppController } from './app.controller';
 
 @Module({
   imports: [
-    TypeOrmModule.forRoot({
-      type: 'postgres',
-      host: process.env.DB_HOST || '127.0.0.1',
-      port: parseInt(process.env.DB_PORT) || 5432,
-      username: process.env.DB_USER || 'henrymarin',
-      password: process.env.DB_PASSWORD || '',
-      database: process.env.DB_NAME || 'tecnero_inventario1',
-      autoLoadEntities: true,
-      synchronize: false,
-      logging: false,
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-    }),
+    TypeOrmModule.forRoot(
+      process.env.DATABASE_URL
+        ? {
+            type: 'postgres',
+            url: process.env.DATABASE_URL,
+            autoLoadEntities: true,
+            synchronize: false,
+            logging: false,
+            ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+          }
+        : {
+            type: 'postgres',
+            host: process.env.DB_HOST || '127.0.0.1',
+            port: parseInt(process.env.DB_PORT || '5432', 10),
+            username: process.env.DB_USER || 'henrymarin',
+            password: process.env.DB_PASSWORD || '',
+            database: process.env.DB_NAME || 'tecnero_inventario1',
+            autoLoadEntities: true,
+            synchronize: false,
+            logging: false,
+            ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+          },
+    ),
     AuthModule,
     MaterialesModule,
     LineasModule,
@@ -37,4 +48,3 @@ import { AppController } from './app.controller';
   controllers: [AppController],
 })
 export class AppModule {}
-
