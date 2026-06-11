@@ -29,6 +29,8 @@ function normalizarLineaIds(value) {
         .filter((item) => item.length > 0);
     return limpio.length > 0 ? limpio : null;
 }
+const FECHA_SOLICITUD_LOCAL = `(COALESCE(s.fecha_entrega, s.fecha) AT TIME ZONE 'America/Guayaquil')`;
+const FECHA_SOLICITUD_LOCAL_DATE = `${FECHA_SOLICITUD_LOCAL}::date`;
 let DashboardService = class DashboardService {
     constructor(dataSource) {
         this.dataSource = dataSource;
@@ -43,7 +45,7 @@ let DashboardService = class DashboardService {
         const params = [d, h, lineaFiltro, lineasFiltro];
         const filtroBase = `
       s.estado = 'entregada'
-      AND COALESCE(s.fecha_entrega, s.fecha) BETWEEN $1 AND $2
+      AND ${FECHA_SOLICITUD_LOCAL_DATE} BETWEEN $1::date AND $2::date
       AND ($3::uuid IS NULL OR s.linea_id = $3::uuid)
       AND ($4::text[] IS NULL OR s.linea_id::text = ANY($4::text[]))
     `;
@@ -85,26 +87,26 @@ let DashboardService = class DashboardService {
       `, params);
         const gastoPorDia = await this.dataSource.query(`
       SELECT
-        TO_CHAR(COALESCE(s.fecha_entrega, s.fecha)::date, 'YYYY-MM-DD') AS dia,
+        TO_CHAR(${FECHA_SOLICITUD_LOCAL_DATE}, 'YYYY-MM-DD') AS dia,
         COALESCE(SUM(d.subtotal), 0)::float AS costo_total,
         COUNT(DISTINCT s.id)::int AS total_solicitudes
       FROM detalle_solicitud d
       INNER JOIN solicitudes s ON s.id = d.solicitud_id
       WHERE ${filtroBase}
-      GROUP BY COALESCE(s.fecha_entrega, s.fecha)::date
-      ORDER BY COALESCE(s.fecha_entrega, s.fecha)::date ASC
+      GROUP BY ${FECHA_SOLICITUD_LOCAL_DATE}
+      ORDER BY ${FECHA_SOLICITUD_LOCAL_DATE} ASC
       `, params);
         const gastoLineaDia = await this.dataSource.query(`
       SELECT
-        TO_CHAR(COALESCE(s.fecha_entrega, s.fecha)::date, 'YYYY-MM-DD') AS dia,
+        TO_CHAR(${FECHA_SOLICITUD_LOCAL_DATE}, 'YYYY-MM-DD') AS dia,
         COALESCE(s.linea_id::text, '') AS linea_id,
         COALESCE(s.linea_nombre, 'Sin línea') AS linea_nombre,
         COALESCE(SUM(d.subtotal), 0)::float AS costo_total
       FROM detalle_solicitud d
       INNER JOIN solicitudes s ON s.id = d.solicitud_id
       WHERE ${filtroBase}
-      GROUP BY COALESCE(s.fecha_entrega, s.fecha)::date, s.linea_id, s.linea_nombre
-      ORDER BY COALESCE(s.fecha_entrega, s.fecha)::date ASC, costo_total DESC
+      GROUP BY ${FECHA_SOLICITUD_LOCAL_DATE}, s.linea_id, s.linea_nombre
+      ORDER BY ${FECHA_SOLICITUD_LOCAL_DATE} ASC, costo_total DESC
       `, params);
         const topMaterialesCosto = await this.dataSource.query(`
       WITH base AS (
@@ -395,7 +397,7 @@ let DashboardService = class DashboardService {
         COUNT(*)::int AS total,
         COALESCE(SUM(costo_total), 0)::float AS costo_total
       FROM solicitudes
-      WHERE fecha BETWEEN $1 AND $2
+      WHERE ${FECHA_SOLICITUD_LOCAL_DATE} BETWEEN $1::date AND $2::date
         AND ($3::uuid IS NULL OR linea_id = $3::uuid)
         AND ($4::text[] IS NULL OR linea_id::text = ANY($4::text[]))
       GROUP BY estado
@@ -412,7 +414,7 @@ let DashboardService = class DashboardService {
         COALESCE(costo_total, 0)::float AS costo_total
       FROM solicitudes s
       WHERE ${filtroBase}
-      ORDER BY COALESCE(fecha_entrega, fecha) DESC
+      ORDER BY ${FECHA_SOLICITUD_LOCAL_DATE} DESC
       LIMIT 12
       `, params);
         const totales = totalesResult[0] ?? {};
