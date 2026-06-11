@@ -23,6 +23,7 @@ import { AppController } from './app.controller';
       autoLoadEntities: true,
       synchronize: false,
       logging: false,
+      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
     }),
     AuthModule,
     MaterialesModule,
@@ -36,3 +37,4 @@ import { AppController } from './app.controller';
   controllers: [AppController],
 })
 export class AppModule {}
+
