@@ -28,6 +28,7 @@ function normalizarLineaIds(value?: string | string[]): string[] | null {
 
 const FECHA_SOLICITUD_LOCAL = `(COALESCE(s.fecha_entrega, s.fecha) AT TIME ZONE 'America/Guayaquil')`;
 const FECHA_SOLICITUD_LOCAL_DATE = `${FECHA_SOLICITUD_LOCAL}::date`;
+const FECHA_SOLICITUD_LOCAL_SIN_ALIAS = `(COALESCE(fecha_entrega, fecha) AT TIME ZONE 'America/Guayaquil')::date`;
 
 @Injectable()
 class DashboardService {
@@ -445,7 +446,7 @@ class DashboardService {
         COUNT(*)::int AS total,
         COALESCE(SUM(costo_total), 0)::float AS costo_total
       FROM solicitudes
-      WHERE ${FECHA_SOLICITUD_LOCAL_DATE} BETWEEN $1::date AND $2::date
+      WHERE ${FECHA_SOLICITUD_LOCAL_SIN_ALIAS} BETWEEN $1::date AND $2::date
         AND ($3::uuid IS NULL OR linea_id = $3::uuid)
         AND ($4::text[] IS NULL OR linea_id::text = ANY($4::text[]))
       GROUP BY estado
