@@ -21,7 +21,6 @@
     "strictPropertyInitialization": false,
     "noImplicitAny": false,
     "resolveJsonModule": true,
-    "ignoreDeprecations": "6.0"
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist"]
