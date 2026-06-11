@@ -132,6 +132,18 @@ class _ProduccionScreenState extends ConsumerState<ProduccionScreen> {
   }
 
   Future<void> _editar(Map<String, dynamic> row) async {
+    final id = '${row['id'] ?? ''}'.trim();
+    if (id.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Este registro está pendiente. Usa "Registrar producción" para crearlo.',
+          ),
+        ),
+      );
+      return;
+    }
+
     final editado = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -705,7 +717,7 @@ class _DiaProduccionSection extends StatelessWidget {
           ...rows.map((row) => _ProduccionCard(
                 row: row,
                 onDelete: onDelete,
-                onEdit: () => onEdit(row),
+                onEdit: _esPendiente(row) ? null : () => onEdit(row),
                 onVerDetalle: () => onVerDetalle(row),
               )),
         ],
@@ -717,7 +729,7 @@ class _DiaProduccionSection extends StatelessWidget {
 class _ProduccionCard extends StatelessWidget {
   final Map<String, dynamic> row;
   final ValueChanged<String>? onDelete;
-  final VoidCallback onEdit;
+  final VoidCallback? onEdit;
   final VoidCallback onVerDetalle;
 
   const _ProduccionCard({
@@ -1598,7 +1610,6 @@ class _DetalleProduccionDialogState
 
                   final data = snapshot.data ?? {};
                   final materiales = data['materiales'] as List? ?? [];
-                  final produccion = data['produccion'] as Map? ?? {};
 
                   if (materiales.isEmpty) {
                     return const Center(
