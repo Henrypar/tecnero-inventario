@@ -230,6 +230,9 @@ Eventos de negocio:
 
 ## Documentacion
 
+- [Instalacion y ejecucion](docs/instalacion.md)
+- [Base de datos](docs/base-datos.md)
+- [Pantallas y funciones por rol](docs/pantallas-roles.md)
 - [Modelo de datos](docs/modelo-datos.md)
 - [Flujo de negocio](docs/flujo-negocio.md)
 - [Guia de demo](docs/guia-demo.md)

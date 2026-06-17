@@ -59,6 +59,7 @@ let ProduccionService = class ProduccionService {
         return this.produccionRepo.manager.query(`
       WITH produccion AS (
         SELECT
+          (ARRAY_AGG(p.id ORDER BY p.created_at ASC))[1]::text AS id,
           p.fecha::date AS fecha,
           p.linea_id,
           MAX(p.linea_nombre) AS linea_nombre,
@@ -84,6 +85,7 @@ let ProduccionService = class ProduccionService {
           AND ($4::text[] IS NULL OR s.linea_id::text = ANY($4::text[]))
       )
       SELECT
+        p.id AS id,
         COALESCE(p.fecha, a.fecha)::date AS fecha,
         COALESCE(p.linea_id, a.linea_id)::text AS linea_id,
         COALESCE(p.linea_nombre, a.linea_nombre) AS linea_nombre,

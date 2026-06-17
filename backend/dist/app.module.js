@@ -37,7 +37,7 @@ exports.AppModule = AppModule = __decorate([
                     type: 'postgres',
                     host: process.env.DB_HOST || '127.0.0.1',
                     port: parseInt(process.env.DB_PORT || '5432', 10),
-                    username: process.env.DB_USER || 'henrymarin',
+                    username: process.env.DB_USER || 'yandry',
                     password: process.env.DB_PASSWORD || '',
                     database: process.env.DB_NAME || 'tecnero_inventario1',
                     autoLoadEntities: true,

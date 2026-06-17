@@ -102,48 +102,7 @@ class _ProduccionScreenState extends ConsumerState<ProduccionScreen> {
     );
   }
 
-  Future<void> _eliminar(String id) async {
-    final confirmar = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Eliminar registro'),
-        content: const Text(
-          'Esta accion quita el registro de unidades producidas. No modifica los despachos ni el inventario.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Eliminar'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmar != true) return;
-
-    await ref.read(apiServiceProvider).eliminarProduccionDiaria(id);
-    ref.invalidate(lineasProvider);
-    ref.invalidate(produccionDiariaProvider);
-    setState(_load);
-  }
-
   Future<void> _editar(Map<String, dynamic> row) async {
-    final id = '${row['id'] ?? ''}'.trim();
-    if (id.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Este registro está pendiente. Usa "Registrar producción" para crearlo.',
-          ),
-        ),
-      );
-      return;
-    }
-
     final editado = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -315,7 +274,6 @@ class _ProduccionScreenState extends ConsumerState<ProduccionScreen> {
 
     return grupos;
   }
-
 }
 
 class _HeaderTitle extends StatelessWidget {
@@ -512,7 +470,7 @@ class _ProduccionFiltros extends StatelessWidget {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
-                              subtitle: Text(
+                              subtitle: const Text(
                                 'Filtra cantidades producidas para esta línea',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -717,7 +675,7 @@ class _DiaProduccionSection extends StatelessWidget {
           ...rows.map((row) => _ProduccionCard(
                 row: row,
                 onDelete: onDelete,
-                onEdit: _esPendiente(row) ? null : () => onEdit(row),
+                onEdit: () => onEdit(row),
                 onVerDetalle: () => onVerDetalle(row),
               )),
         ],
@@ -747,9 +705,10 @@ class _ProduccionCard extends StatelessWidget {
     final registradoPor =
         '${row['registradoPor'] ?? row['registrado_por'] ?? ''}';
     final observaciones = '${row['observaciones'] ?? ''}'.trim();
-    final id = '${row['id'] ?? ''}';
+    final id = _produccionId(row);
     final pendiente = _esPendiente(row);
-    final iconColor = pendiente ? const Color(0xFF6B7280) : TecneroTheme.naranja;
+    final iconColor =
+        pendiente ? const Color(0xFF6B7280) : TecneroTheme.naranja;
     final cardColor = pendiente ? const Color(0xFFF8FAFC) : Colors.white;
     final borderColor =
         pendiente ? const Color(0xFFD1D5DB) : TecneroTheme.grisBorde;
@@ -855,8 +814,9 @@ class _ProduccionCard extends StatelessWidget {
 }
 
 bool _esPendiente(Map<String, dynamic> row) {
-  return row['__pendiente'] == true ||
-      (_num(row['cantidad']) <= 0 && '${row['id'] ?? ''}'.trim().isEmpty);
+  return _bool(row['__pendiente']) ||
+      _bool(row['pendiente_produccion']) ||
+      (_num(row['cantidad']) <= 0 && _produccionId(row).isEmpty);
 }
 
 class _ProduccionDialog extends ConsumerStatefulWidget {
@@ -1252,6 +1212,17 @@ double _num(dynamic value) {
   return double.tryParse((value ?? '0').toString()) ?? 0;
 }
 
+bool _bool(dynamic value) {
+  if (value is bool) return value;
+  final text = '${value ?? ''}'.trim().toLowerCase();
+  return text == 'true' || text == 't' || text == '1';
+}
+
+String _produccionId(Map<String, dynamic> row) {
+  return '${row['id'] ?? row['produccion_id'] ?? row['produccionId'] ?? ''}'
+      .trim();
+}
+
 bool _mismoDia(DateTime a, DateTime b) {
   return a.year == b.year && a.month == b.month && a.day == b.day;
 }
@@ -1325,7 +1296,7 @@ class _EditarProduccionDialogState
     });
 
     try {
-      final id = '${widget.registro['id'] ?? ''}'.trim();
+      final id = _produccionId(widget.registro);
       final fecha = DateTime.tryParse(
             '${widget.registro['fecha'] ?? DateTime.now().toIso8601String()}',
           ) ??
@@ -1557,9 +1528,9 @@ class _DetalleProduccionDialogState
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        const Text(
                           'Detalle de producción',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w800,
                           ),

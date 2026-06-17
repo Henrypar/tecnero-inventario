@@ -1,4 +1,5 @@
 // Bootstrap del backend NestJS: CORS, prefijo /api y puerto de escucha.
+import 'dotenv/config';
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';

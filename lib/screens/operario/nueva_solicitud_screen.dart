@@ -34,6 +34,7 @@ class _NuevaSolicitudScreenState extends ConsumerState<NuevaSolicitudScreen> {
   bool _enviando = false;
   bool _cargandoSugeridos = false;
   bool _dialogoAbierto = false;
+  int _mobilePaso = 1;
   String? _error;
   String? _exito;
 
@@ -118,6 +119,385 @@ class _NuevaSolicitudScreenState extends ConsumerState<NuevaSolicitudScreen> {
       _error = null;
       _exito = null;
     });
+  }
+
+  void _irPaso(int paso) {
+    setState(() {
+      _mobilePaso = paso.clamp(1, 3);
+      _error = null;
+      _exito = null;
+    });
+  }
+
+  void _siguientePasoMobile() {
+    if (_mobilePaso == 1) {
+      if (_lineaSeleccionada == null) {
+        setState(() => _error = 'Selecciona una línea de producción');
+        return;
+      }
+      _irPaso(2);
+      return;
+    }
+
+    if (_mobilePaso == 2) {
+      if (_items.isEmpty) {
+        setState(() => _error = 'Selecciona al menos un material');
+        return;
+      }
+      _irPaso(3);
+    }
+  }
+
+  void _pasoAnteriorMobile() {
+    if (_mobilePaso > 1) {
+      _irPaso(_mobilePaso - 1);
+    }
+  }
+
+  Widget _mobileContent(
+    AsyncValue<List<models.LineaProduccion>> lineas,
+    AsyncValue<List<models.Material>> materiales,
+  ) {
+    final paso1Listo = _lineaSeleccionada != null;
+    final paso2Listo = _items.isNotEmpty;
+
+    Widget card({
+      required int numero,
+      required String titulo,
+      required String descripcion,
+      required bool completado,
+      required Widget child,
+    }) {
+      return _PasoCard(
+        numero: numero,
+        titulo: titulo,
+        descripcion: descripcion,
+        completado: completado,
+        child: child,
+      );
+    }
+
+    switch (_mobilePaso) {
+      case 1:
+        return card(
+          numero: 1,
+          titulo: 'Selecciona la línea de producción',
+          descripcion: 'Elige una sola línea antes de seguir.',
+          completado: paso1Listo,
+          child: lineas.when(
+            loading: () => const Padding(
+              padding: EdgeInsets.all(12),
+              child: LinearProgressIndicator(),
+            ),
+            error: (e, _) => _ErrorBox(msg: 'Error: $e'),
+            data: (lista) => Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Toca una línea para seleccionarla',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: TecneroTheme.textoSecundario,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                if (lista.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: Text(
+                      'No hay líneas activas disponibles.',
+                      style: TextStyle(color: TecneroTheme.textoSecundario),
+                    ),
+                  )
+                else
+                  Container(
+                    constraints: const BoxConstraints(maxHeight: 280),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: TecneroTheme.grisBorde),
+                    ),
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      physics: const ClampingScrollPhysics(),
+                      padding: const EdgeInsets.all(8),
+                      itemCount: lista.length,
+                      separatorBuilder: (_, __) =>
+                          const Divider(height: 1, thickness: 0.7),
+                      itemBuilder: (context, index) {
+                        final linea = lista[index];
+                        final selected = _lineaSeleccionada?.id == linea.id;
+
+                        return Material(
+                          color: selected
+                              ? TecneroTheme.naranja.withValues(alpha: 0.10)
+                              : Colors.transparent,
+                          child: InkWell(
+                            onTap: () {
+                              setState(() {
+                                _lineaSeleccionada = linea;
+                                _items.clear();
+                                _error = null;
+                                _exito = null;
+                                _mobilePaso = 2;
+                              });
+                            },
+                            borderRadius: BorderRadius.circular(10),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 12,
+                              ),
+                              child: Row(
+                                children: [
+                                  CircleAvatar(
+                                    radius: 13,
+                                    backgroundColor: selected
+                                        ? TecneroTheme.naranja
+                                        : TecneroTheme.grisClaro,
+                                    child: selected
+                                        ? const Icon(
+                                            Icons.check,
+                                            size: 14,
+                                            color: Colors.white,
+                                          )
+                                        : Text(
+                                            '${index + 1}',
+                                            style: const TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w700,
+                                              color:
+                                                  TecneroTheme.textoSecundario,
+                                            ),
+                                          ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          linea.nombre,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: selected
+                                                ? FontWeight.w800
+                                                : FontWeight.w600,
+                                            color: selected
+                                                ? TecneroTheme.azulOscuro
+                                                : TecneroTheme.textoPrimario,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          linea.descripcion,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            color: TecneroTheme.textoSecundario,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Icon(
+                                    selected
+                                        ? Icons.check_circle
+                                        : Icons.radio_button_unchecked,
+                                    color: selected
+                                        ? TecneroTheme.naranja
+                                        : TecneroTheme.grisBorde,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                if (paso1Listo) ...[
+                  const SizedBox(height: 12),
+                  _LineaSeleccionadaBanner(linea: _lineaSeleccionada!),
+                ],
+              ],
+            ),
+          ),
+        );
+      case 2:
+        return card(
+          numero: 2,
+          titulo: 'Elige los materiales que necesitas',
+          descripcion: 'Carga sugeridos o selecciona manualmente.',
+          completado: paso2Listo,
+          child: materiales.when(
+            loading: () => const Padding(
+              padding: EdgeInsets.all(12),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+            error: (e, _) => _ErrorBox(
+              msg:
+                  'No se pudieron cargar los materiales.\nVerifica la conexión con el servidor.\n\n$e',
+            ),
+            data: (lista) => Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_lineaSeleccionada != null) ...[
+                  _LineaSeleccionadaBanner(linea: _lineaSeleccionada!),
+                  const SizedBox(height: 12),
+                ],
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: _cargandoSugeridos
+                            ? null
+                            : _preguntarCargarSugeridos,
+                        icon: _cargandoSugeridos
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.playlist_add_check, size: 18),
+                        label: Text(
+                          _cargandoSugeridos
+                              ? 'Cargando...'
+                              : 'Cargar sugeridos',
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: TecneroTheme.azulOscuro,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _abrirSelectorMateriales(lista),
+                        icon: Icon(
+                          _items.isEmpty
+                              ? Icons.add_circle_outline
+                              : Icons.edit_outlined,
+                          size: 18,
+                        ),
+                        label: Text(
+                          _items.isEmpty
+                              ? 'Elegir materiales'
+                              : 'Editar (${_items.length})',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                if (_items.isEmpty)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0F9FF),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFBAE6FD)),
+                    ),
+                    child: const Text(
+                      'No hay materiales seleccionados todavía. Usa "Cargar sugeridos" o "Elegir materiales".',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF0369A1),
+                      ),
+                    ),
+                  )
+                else ...[
+                  _ResumenCategorias(
+                    items: _items,
+                    categoriaLabel: _categoriaLabel,
+                    categoriaColor: _categoriaColor,
+                  ),
+                  const SizedBox(height: 12),
+                  ...List.generate(
+                    _items.length,
+                    (i) => _MaterialFilaRow(
+                      key: ValueKey(_items[i].rowId),
+                      item: _items[i],
+                      categoria: _categoriaLabel(_items[i].material),
+                      categoriaColor:
+                          _categoriaColor(_categoriaLabel(_items[i].material)),
+                      onCantidadChange: (v) =>
+                          setState(() => _items[i].cantidad = v),
+                      onRemove: () => _removeItem(i),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      default:
+        return card(
+          numero: 3,
+          titulo: 'Observaciones y envío',
+          descripcion: 'Agrega una nota opcional y envía la solicitud.',
+          completado: _puedeEnviar,
+          child: Column(
+            children: [
+              TextField(
+                controller: _obsCtrl,
+                maxLines: 3,
+                enabled: paso1Listo && paso2Listo,
+                decoration: const InputDecoration(
+                  hintText: 'Ej: Materiales urgentes, para turno de tarde...',
+                  prefixIcon: Icon(Icons.note_outlined, size: 18),
+                ),
+              ),
+              const SizedBox(height: 16),
+              if (_error != null) ...[
+                _ErrorBox(msg: _error!),
+                const SizedBox(height: 12),
+              ],
+              if (_exito != null) ...[
+                _SuccessBox(msg: _exito!),
+                const SizedBox(height: 12),
+              ],
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: TecneroTheme.grisBorde),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Línea: ${_lineaSeleccionada?.nombre ?? "Sin seleccionar"}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Materiales: ${_items.length}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: TecneroTheme.textoSecundario,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+    }
   }
 
   Future<void> _abrirSelectorMateriales(
@@ -256,6 +636,9 @@ class _NuevaSolicitudScreenState extends ConsumerState<NuevaSolicitudScreen> {
     });
   }
 
+  bool get _puedeEnviar =>
+      _lineaSeleccionada != null && _items.isNotEmpty && !_enviando;
+
   Future<void> _enviar() async {
     if (_lineaSeleccionada == null) {
       setState(() => _error = 'Selecciona una línea de producción');
@@ -315,6 +698,7 @@ class _NuevaSolicitudScreenState extends ConsumerState<NuevaSolicitudScreen> {
       setState(() {
         _exito = 'Solicitud enviada a bodega';
         _lineaSeleccionada = null;
+        _mobilePaso = 1;
         _items.clear();
         _obsCtrl.clear();
       });
@@ -340,6 +724,67 @@ class _NuevaSolicitudScreenState extends ConsumerState<NuevaSolicitudScreen> {
 
     return Scaffold(
       backgroundColor: TecneroTheme.grisClaro,
+      bottomNavigationBar: isMobile
+          ? SafeArea(
+              top: false,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  border: Border(
+                    top: BorderSide(color: TecneroTheme.grisBorde),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    if (_mobilePaso > 1) ...[
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _pasoAnteriorMobile,
+                          icon: const Icon(Icons.arrow_back_outlined, size: 18),
+                          label: const Text('Anterior'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                    ],
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: _mobilePaso == 3
+                            ? (_puedeEnviar ? _enviar : null)
+                            : _siguientePasoMobile,
+                        icon: _enviando && _mobilePaso == 3
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : Icon(
+                                _mobilePaso == 3
+                                    ? Icons.send_outlined
+                                    : Icons.arrow_forward_outlined,
+                                size: 18,
+                              ),
+                        label: Text(
+                          _mobilePaso == 3
+                              ? (_enviando ? 'Enviando...' : 'Enviar solicitud')
+                              : 'Siguiente',
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          backgroundColor: TecneroTheme.naranja,
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor: TecneroTheme.grisBorde,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : null,
       body: Column(
         children: [
           Container(
@@ -430,359 +875,368 @@ class _NuevaSolicitudScreenState extends ConsumerState<NuevaSolicitudScreen> {
               child: Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 860),
-                  child: Column(
-                    children: [
-                      _PasoCard(
-                        numero: 1,
-                        titulo: 'Selecciona la línea de producción',
-                        descripcion: '¿En qué área vas a trabajar hoy?',
-                        completado: paso1Listo,
-                        child: lineas.when(
-                          loading: () => const LinearProgressIndicator(),
-                          error: (e, _) => _ErrorBox(msg: 'Error: $e'),
-                          data: (lista) =>
-                              DropdownButtonFormField<models.LineaProduccion>(
-                            initialValue: _lineaSeleccionada,
-                            decoration: const InputDecoration(
-                              hintText: 'Toca aquí para seleccionar...',
-                              prefixIcon:
-                                  Icon(Icons.factory_outlined, size: 18),
-                            ),
-                            items: lista
-                                .map(
-                                  (l) => DropdownMenuItem(
-                                    value: l,
-                                    child: Text(
-                                      l.nombre,
-                                      style: const TextStyle(fontSize: 14),
+                  child: isMobile
+                      ? _mobileContent(lineas, materiales)
+                      : Column(
+                          children: [
+                            _PasoCard(
+                              numero: 1,
+                              titulo: 'Selecciona la línea de producción',
+                              descripcion: '¿En qué área vas a trabajar hoy?',
+                              completado: paso1Listo,
+                              child: lineas.when(
+                                loading: () => const LinearProgressIndicator(),
+                                error: (e, _) => _ErrorBox(msg: 'Error: $e'),
+                                data: (lista) => DropdownButtonFormField<
+                                    models.LineaProduccion>(
+                                  initialValue: _lineaSeleccionada,
+                                  decoration: const InputDecoration(
+                                    hintText: 'Toca aquí para seleccionar...',
+                                    prefixIcon: Icon(
+                                      Icons.factory_outlined,
+                                      size: 18,
                                     ),
                                   ),
-                                )
-                                .toList(),
-                            onChanged: (v) {
-                              setState(() {
-                                _lineaSeleccionada = v;
-                                _items.clear();
-                                _error = null;
-                                _exito = null;
-                              });
-
-                              if (v != null) {
-                                WidgetsBinding.instance
-                                    .addPostFrameCallback((_) {
-                                  if (!mounted) return;
-                                  _preguntarCargarSugeridos();
-                                });
-                              }
-                            },
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      _PasoCard(
-                        numero: 2,
-                        titulo: 'Elige los materiales que necesitas',
-                        descripcion:
-                            'Puedes cargar una lista sugerida o buscar manualmente',
-                        completado: paso2Listo,
-                        bloqueado: !paso1Listo,
-                        child: materiales.when(
-                          loading: () => const Padding(
-                            padding: EdgeInsets.all(20),
-                            child: Center(child: CircularProgressIndicator()),
-                          ),
-                          error: (e, _) => _ErrorBox(
-                            msg:
-                                'No se pudieron cargar los materiales.\nVerifica la conexión con el servidor.\n\n$e',
-                          ),
-                          data: (lista) => Column(
-                            children: [
-                              Flex(
-                                direction:
-                                    isMobile ? Axis.vertical : Axis.horizontal,
-                                children: [
-                                  Flexible(
-                                    fit: isMobile
-                                        ? FlexFit.loose
-                                        : FlexFit.tight,
-                                    child: SizedBox(
-                                      width: double.infinity,
-                                      child: ElevatedButton.icon(
-                                        onPressed: paso1Listo
-                                            ? _preguntarCargarSugeridos
-                                            : null,
-                                        icon: Icon(
-                                          _cargandoSugeridos
-                                              ? Icons.hourglass_top_outlined
-                                              : Icons.playlist_add_check,
-                                          size: 20,
-                                        ),
-                                        label: Text(
-                                          _cargandoSugeridos
-                                              ? 'Cargando sugeridos...'
-                                              : 'Cargar materiales sugeridos',
-                                          style: const TextStyle(fontSize: 14),
-                                        ),
-                                        style: ElevatedButton.styleFrom(
-                                          minimumSize:
-                                              const Size(double.infinity, 50),
-                                          backgroundColor:
-                                              TecneroTheme.azulOscuro,
-                                          foregroundColor: Colors.white,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  SizedBox(
-                                    width: isMobile ? 0 : 10,
-                                    height: isMobile ? 10 : 0,
-                                  ),
-                                  Flexible(
-                                    fit: isMobile
-                                        ? FlexFit.loose
-                                        : FlexFit.tight,
-                                    child: SizedBox(
-                                      width: double.infinity,
-                                      child: OutlinedButton.icon(
-                                        onPressed: paso1Listo
-                                            ? () =>
-                                                _abrirSelectorMateriales(lista)
-                                            : null,
-                                        icon: Icon(
-                                          _items.isEmpty
-                                              ? Icons.add_circle_outline
-                                              : Icons.edit_outlined,
-                                          size: 20,
-                                        ),
-                                        label: Text(
-                                          _items.isEmpty
-                                              ? 'Seleccionar manualmente'
-                                              : 'Editar selección (${_items.length})',
-                                          style: const TextStyle(fontSize: 14),
-                                        ),
-                                        style: OutlinedButton.styleFrom(
-                                          minimumSize:
-                                              const Size(double.infinity, 50),
-                                          side: BorderSide(
-                                            color: paso1Listo
-                                                ? TecneroTheme.azulOscuro
-                                                : TecneroTheme.grisBorde,
-                                            width: 1.5,
+                                  items: lista
+                                      .map(
+                                        (l) => DropdownMenuItem(
+                                          value: l,
+                                          child: Text(
+                                            l.nombre,
+                                            style:
+                                                const TextStyle(fontSize: 14),
                                           ),
-                                          foregroundColor: paso1Listo
-                                              ? TecneroTheme.azulOscuro
-                                              : TecneroTheme.textoSecundario,
                                         ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              if (_items.isNotEmpty) ...[
-                                const SizedBox(height: 16),
-                                _ResumenCategorias(
-                                  items: _items,
-                                  categoriaLabel: _categoriaLabel,
-                                  categoriaColor: _categoriaColor,
+                                      )
+                                      .toList(),
+                                  onChanged: (v) {
+                                    setState(() {
+                                      _lineaSeleccionada = v;
+                                      _items.clear();
+                                      _error = null;
+                                      _exito = null;
+                                    });
+                                  },
                                 ),
-                                const SizedBox(height: 12),
-                                if (!isMobile) ...[
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 8,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: TecneroTheme.grisClaro,
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: const Row(
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            _PasoCard(
+                              numero: 2,
+                              titulo: 'Elige los materiales que necesitas',
+                              descripcion:
+                                  'Puedes cargar una lista sugerida o buscar manualmente',
+                              completado: paso2Listo,
+                              bloqueado: !paso1Listo,
+                              child: materiales.when(
+                                loading: () => const Padding(
+                                  padding: EdgeInsets.all(20),
+                                  child: Center(
+                                      child: CircularProgressIndicator()),
+                                ),
+                                error: (e, _) => _ErrorBox(
+                                  msg:
+                                      'No se pudieron cargar los materiales.\nVerifica la conexión con el servidor.\n\n$e',
+                                ),
+                                data: (lista) => Column(
+                                  children: [
+                                    Flex(
+                                      direction: isMobile
+                                          ? Axis.vertical
+                                          : Axis.horizontal,
                                       children: [
+                                        Flexible(
+                                          fit: isMobile
+                                              ? FlexFit.loose
+                                              : FlexFit.tight,
+                                          child: SizedBox(
+                                            width: double.infinity,
+                                            child: ElevatedButton.icon(
+                                              onPressed: paso1Listo
+                                                  ? _preguntarCargarSugeridos
+                                                  : null,
+                                              icon: Icon(
+                                                _cargandoSugeridos
+                                                    ? Icons
+                                                        .hourglass_top_outlined
+                                                    : Icons.playlist_add_check,
+                                                size: 20,
+                                              ),
+                                              label: Text(
+                                                _cargandoSugeridos
+                                                    ? 'Cargando sugeridos...'
+                                                    : 'Cargar materiales sugeridos',
+                                                style: const TextStyle(
+                                                    fontSize: 14),
+                                              ),
+                                              style: ElevatedButton.styleFrom(
+                                                minimumSize: const Size(
+                                                    double.infinity, 50),
+                                                backgroundColor:
+                                                    TecneroTheme.azulOscuro,
+                                                foregroundColor: Colors.white,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
                                         SizedBox(
-                                          width: 110,
-                                          child: Text(
-                                            'Categoría',
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w600,
-                                              color:
-                                                  TecneroTheme.textoSecundario,
+                                          width: isMobile ? 0 : 10,
+                                          height: isMobile ? 10 : 0,
+                                        ),
+                                        Flexible(
+                                          fit: isMobile
+                                              ? FlexFit.loose
+                                              : FlexFit.tight,
+                                          child: SizedBox(
+                                            width: double.infinity,
+                                            child: OutlinedButton.icon(
+                                              onPressed: paso1Listo
+                                                  ? () =>
+                                                      _abrirSelectorMateriales(
+                                                          lista)
+                                                  : null,
+                                              icon: Icon(
+                                                _items.isEmpty
+                                                    ? Icons.add_circle_outline
+                                                    : Icons.edit_outlined,
+                                                size: 20,
+                                              ),
+                                              label: Text(
+                                                _items.isEmpty
+                                                    ? 'Seleccionar manualmente'
+                                                    : 'Editar selección (${_items.length})',
+                                                style: const TextStyle(
+                                                    fontSize: 14),
+                                              ),
+                                              style: OutlinedButton.styleFrom(
+                                                minimumSize: const Size(
+                                                    double.infinity, 50),
+                                                side: BorderSide(
+                                                  color: paso1Listo
+                                                      ? TecneroTheme.azulOscuro
+                                                      : TecneroTheme.grisBorde,
+                                                  width: 1.5,
+                                                ),
+                                                foregroundColor: paso1Listo
+                                                    ? TecneroTheme.azulOscuro
+                                                    : TecneroTheme
+                                                        .textoSecundario,
+                                              ),
                                             ),
                                           ),
                                         ),
-                                        Expanded(
-                                          child: Text(
-                                            'Material',
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w600,
-                                              color:
-                                                  TecneroTheme.textoSecundario,
-                                            ),
-                                          ),
-                                        ),
-                                        SizedBox(
-                                          width: 110,
-                                          child: Text(
-                                            'Cantidad',
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w600,
-                                              color:
-                                                  TecneroTheme.textoSecundario,
-                                            ),
-                                          ),
-                                        ),
-                                        SizedBox(
-                                          width: 70,
-                                          child: Text(
-                                            'Unidad',
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w600,
-                                              color:
-                                                  TecneroTheme.textoSecundario,
-                                            ),
-                                          ),
-                                        ),
-                                        SizedBox(width: 40),
                                       ],
                                     ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                ],
-                                ...List.generate(
-                                  _items.length,
-                                  (i) => _MaterialFilaRow(
-                                    key: ValueKey(_items[i].rowId),
-                                    item: _items[i],
-                                    categoria:
-                                        _categoriaLabel(_items[i].material),
-                                    categoriaColor: _categoriaColor(
-                                      _categoriaLabel(_items[i].material),
-                                    ),
-                                    onCantidadChange: (v) => setState(
-                                      () => _items[i].cantidad = v,
-                                    ),
-                                    onRemove: () => _removeItem(i),
-                                  ),
-                                ),
-                              ] else if (paso1Listo) ...[
-                                const SizedBox(height: 16),
-                                Container(
-                                  padding: const EdgeInsets.all(16),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFF0F9FF),
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(
-                                      color: const Color(0xFFBAE6FD),
-                                    ),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      const Icon(
-                                        Icons.info_outline,
-                                        color: Color(0xFF0284C7),
-                                        size: 20,
+                                    if (_items.isNotEmpty) ...[
+                                      const SizedBox(height: 16),
+                                      _ResumenCategorias(
+                                        items: _items,
+                                        categoriaLabel: _categoriaLabel,
+                                        categoriaColor: _categoriaColor,
                                       ),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: Text(
-                                          'Puedes cargar la lista sugerida para ${_lineaSeleccionada?.nombre ?? "esta línea"} o seleccionar materiales manualmente.',
-                                          style: const TextStyle(
-                                            fontSize: 12,
-                                            color: Color(0xFF0369A1),
+                                      const SizedBox(height: 12),
+                                      if (!isMobile) ...[
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 8,
                                           ),
+                                          decoration: BoxDecoration(
+                                            color: TecneroTheme.grisClaro,
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                          ),
+                                          child: const Row(
+                                            children: [
+                                              SizedBox(
+                                                width: 110,
+                                                child: Text(
+                                                  'Categoría',
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: TecneroTheme
+                                                        .textoSecundario,
+                                                  ),
+                                                ),
+                                              ),
+                                              Expanded(
+                                                child: Text(
+                                                  'Material',
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: TecneroTheme
+                                                        .textoSecundario,
+                                                  ),
+                                                ),
+                                              ),
+                                              SizedBox(
+                                                width: 110,
+                                                child: Text(
+                                                  'Cantidad',
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: TecneroTheme
+                                                        .textoSecundario,
+                                                  ),
+                                                ),
+                                              ),
+                                              SizedBox(
+                                                width: 70,
+                                                child: Text(
+                                                  'Unidad',
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: TecneroTheme
+                                                        .textoSecundario,
+                                                  ),
+                                                ),
+                                              ),
+                                              SizedBox(width: 40),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(height: 6),
+                                      ],
+                                      ...List.generate(
+                                        _items.length,
+                                        (i) => _MaterialFilaRow(
+                                          key: ValueKey(_items[i].rowId),
+                                          item: _items[i],
+                                          categoria: _categoriaLabel(
+                                              _items[i].material),
+                                          categoriaColor: _categoriaColor(
+                                            _categoriaLabel(_items[i].material),
+                                          ),
+                                          onCantidadChange: (v) => setState(
+                                            () => _items[i].cantidad = v,
+                                          ),
+                                          onRemove: () => _removeItem(i),
+                                        ),
+                                      ),
+                                    ] else if (paso1Listo) ...[
+                                      const SizedBox(height: 16),
+                                      Container(
+                                        padding: const EdgeInsets.all(16),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFF0F9FF),
+                                          borderRadius:
+                                              BorderRadius.circular(10),
+                                          border: Border.all(
+                                            color: const Color(0xFFBAE6FD),
+                                          ),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            const Icon(
+                                              Icons.info_outline,
+                                              color: Color(0xFF0284C7),
+                                              size: 20,
+                                            ),
+                                            const SizedBox(width: 10),
+                                            Expanded(
+                                              child: Text(
+                                                'Puedes cargar la lista sugerida para ${_lineaSeleccionada?.nombre ?? "esta línea"} o seleccionar materiales manualmente.',
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                  color: Color(0xFF0369A1),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
                                     ],
-                                  ),
+                                  ],
                                 ),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      _PasoCard(
-                        numero: 3,
-                        titulo: 'Observaciones y envío',
-                        descripcion: 'Agrega notas para bodega (opcional)',
-                        completado: false,
-                        bloqueado: !paso1Listo || !paso2Listo,
-                        child: Column(
-                          children: [
-                            TextField(
-                              controller: _obsCtrl,
-                              maxLines: 3,
-                              enabled: paso1Listo && paso2Listo,
-                              decoration: const InputDecoration(
-                                hintText:
-                                    'Ej: Materiales urgentes, para turno de tarde...',
-                                prefixIcon: Icon(Icons.note_outlined, size: 18),
                               ),
                             ),
-                            const SizedBox(height: 20),
-                            if (_error != null) ...[
-                              _ErrorBox(msg: _error!),
-                              const SizedBox(height: 12),
-                            ],
-                            if (_exito != null) ...[
-                              _SuccessBox(msg: _exito!),
-                              const SizedBox(height: 12),
-                            ],
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton.icon(
-                                onPressed:
-                                    (_enviando || !paso1Listo || !paso2Listo)
-                                        ? null
-                                        : _enviar,
-                                icon: _enviando
-                                    ? const SizedBox(
-                                        width: 18,
-                                        height: 18,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Colors.white,
+                            const SizedBox(height: 12),
+                            _PasoCard(
+                              numero: 3,
+                              titulo: 'Observaciones y envío',
+                              descripcion:
+                                  'Agrega notas para bodega (opcional)',
+                              completado: false,
+                              bloqueado: !paso1Listo || !paso2Listo,
+                              child: Column(
+                                children: [
+                                  TextField(
+                                    controller: _obsCtrl,
+                                    maxLines: 3,
+                                    enabled: paso1Listo && paso2Listo,
+                                    decoration: const InputDecoration(
+                                      hintText:
+                                          'Ej: Materiales urgentes, para turno de tarde...',
+                                      prefixIcon:
+                                          Icon(Icons.note_outlined, size: 18),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 20),
+                                  if (_error != null) ...[
+                                    _ErrorBox(msg: _error!),
+                                    const SizedBox(height: 12),
+                                  ],
+                                  if (_exito != null) ...[
+                                    _SuccessBox(msg: _exito!),
+                                    const SizedBox(height: 12),
+                                  ],
+                                  SizedBox(
+                                    width: double.infinity,
+                                    child: ElevatedButton.icon(
+                                      onPressed: _puedeEnviar ? _enviar : null,
+                                      icon: _enviando
+                                          ? const SizedBox(
+                                              width: 18,
+                                              height: 18,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: Colors.white,
+                                              ),
+                                            )
+                                          : const Icon(
+                                              Icons.send_outlined,
+                                              size: 18,
+                                            ),
+                                      label: Text(
+                                        _enviando
+                                            ? 'Enviando...'
+                                            : 'Enviar solicitud a bodega',
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w600,
                                         ),
-                                      )
-                                    : const Icon(Icons.send_outlined, size: 18),
-                                label: Text(
-                                  _enviando
-                                      ? 'Enviando...'
-                                      : 'Enviar solicitud a bodega',
-                                  style: const TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w600,
+                                      ),
+                                      style: ElevatedButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 16,
+                                        ),
+                                        disabledBackgroundColor:
+                                            TecneroTheme.grisBorde,
+                                      ),
+                                    ),
                                   ),
-                                ),
-                                style: ElevatedButton.styleFrom(
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 16),
-                                  disabledBackgroundColor:
-                                      TecneroTheme.grisBorde,
-                                ),
+                                  if (!paso1Listo || !paso2Listo) ...[
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      !paso1Listo
+                                          ? 'Completa el paso 1 y 2 para poder enviar'
+                                          : 'Completa el paso 2 para poder enviar',
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: TecneroTheme.textoSecundario,
+                                      ),
+                                    ),
+                                  ],
+                                ],
                               ),
                             ),
-                            if (!paso1Listo || !paso2Listo) ...[
-                              const SizedBox(height: 8),
-                              Text(
-                                !paso1Listo
-                                    ? 'Completa el paso 1 y 2 para poder enviar'
-                                    : 'Completa el paso 2 para poder enviar',
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: TecneroTheme.textoSecundario,
-                                ),
-                              ),
-                            ],
                           ],
                         ),
-                      ),
-                    ],
-                  ),
                 ),
               ),
             ),
@@ -933,6 +1387,52 @@ class _MobileStepChip extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LineaSeleccionadaBanner extends StatelessWidget {
+  final models.LineaProduccion linea;
+
+  const _LineaSeleccionadaBanner({
+    required this.linea,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: TecneroTheme.azulOscuro.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: TecneroTheme.azulOscuro.withValues(alpha: 0.18),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 10,
+            height: 10,
+            decoration: const BoxDecoration(
+              color: TecneroTheme.naranja,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Línea seleccionada: ${linea.nombre}',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: TecneroTheme.azulOscuro,
               ),
             ),
           ),
@@ -1397,7 +1897,10 @@ class _MaterialesDialogState extends State<_MaterialesDialog> {
   @override
   Widget build(BuildContext context) {
     final filtrados = _filtrados;
-    final w = MediaQuery.of(context).size.width;
+    final media = MediaQuery.of(context);
+    final w = media.size.width;
+    final h = media.size.height;
+    final isMobile = w < 720;
 
     return AlertDialog(
       titlePadding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
@@ -1430,12 +1933,12 @@ class _MaterialesDialogState extends State<_MaterialesDialog> {
       ),
       content: SizedBox(
         width: w > 760 ? 720 : w * 0.92,
-        height: 560,
+        height: isMobile ? (h * 0.78).clamp(420.0, 620.0) : 560,
         child: Column(
           children: [
             TextField(
               controller: _buscarCtrl,
-              autofocus: true,
+              autofocus: !isMobile,
               decoration: InputDecoration(
                 hintText: 'Buscar por nombre o código...',
                 prefixIcon: const Icon(Icons.search, size: 18),
